@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import os
+import re
 import secrets
 import unicodedata
 from datetime import datetime, timedelta, timezone
@@ -276,6 +277,19 @@ def clean_text(data: dict, key: str) -> str:
     return str(data.get(key, "")).strip()
 
 
+def uppercase_text(value) -> str:
+    text = str(value or "").strip().upper()
+    return re.sub(r"\s+", " ", text)
+
+
+def normalize_plate_number(value) -> str:
+    raw = re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
+    match = re.fullmatch(r"(\d{4})([A-Z]{3})", raw)
+    if not match:
+        raise ValueError("La placa debe tener el formato 2127 - ACC.")
+    return f"{match.group(1)} - {match.group(2)}"
+
+
 def parse_filter_date(value: str, add_day: bool = False) -> datetime | None:
     if not value:
         return None
@@ -436,13 +450,13 @@ def read_import_rows(file_storage) -> list[dict]:
 def build_import_record(row: dict, fallback_username: str) -> WaterRecord:
     normalized = normalized_import_row(row)
 
-    driver_name = str(import_value(normalized, "driver_name")).strip()
-    plate_number = str(import_value(normalized, "plate_number")).strip().upper()
-    employee_code = str(import_value(normalized, "employee_code")).strip()
-    ebap = str(import_value(normalized, "ebap")).strip()
-    company_type = str(import_value(normalized, "company_type")).strip()
-    company_name = str(import_value(normalized, "company_name")).strip()
-    characteristics = str(import_value(normalized, "characteristics")).strip()
+    driver_name = uppercase_text(import_value(normalized, "driver_name"))
+    plate_number = normalize_plate_number(import_value(normalized, "plate_number"))
+    employee_code = uppercase_text(import_value(normalized, "employee_code"))
+    ebap = uppercase_text(import_value(normalized, "ebap"))
+    company_type = uppercase_text(import_value(normalized, "company_type"))
+    company_name = uppercase_text(import_value(normalized, "company_name"))
+    characteristics = uppercase_text(import_value(normalized, "characteristics"))
 
     if not company_type and " / " in company_name:
         company_type, company_name = [part.strip() for part in company_name.split(" / ", 1)]
@@ -490,13 +504,18 @@ def build_import_record(row: dict, fallback_username: str) -> WaterRecord:
 
 
 def validated_record_values(data: dict) -> dict:
+    try:
+        plate_number = normalize_plate_number(clean_text(data, "plateNumber"))
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+
     required_text = {
-        "driverName": clean_text(data, "driverName"),
-        "plateNumber": clean_text(data, "plateNumber").upper(),
-        "employeeCode": clean_text(data, "employeeCode"),
-        "ebap": clean_text(data, "ebap"),
-        "companyType": clean_text(data, "companyType"),
-        "companyName": clean_text(data, "companyName"),
+        "driverName": uppercase_text(data.get("driverName")),
+        "plateNumber": plate_number,
+        "employeeCode": uppercase_text(data.get("employeeCode")),
+        "ebap": uppercase_text(data.get("ebap")),
+        "companyType": uppercase_text(data.get("companyType")),
+        "companyName": uppercase_text(data.get("companyName")),
     }
     if any(not value for value in required_text.values()):
         raise ValueError("Complete todos los campos obligatorios.")
@@ -523,7 +542,7 @@ def validated_record_values(data: dict) -> dict:
         "load_volume": round(volume, 2),
         "company_type": required_text["companyType"],
         "company_name": required_text["companyName"],
-        "characteristics": clean_text(data, "characteristics"),
+        "characteristics": uppercase_text(data.get("characteristics")),
     }
 
 
@@ -603,9 +622,9 @@ def apply_record_filters(query):
             )
         )
     if ebap:
-        query = query.filter(WaterRecord.ebap == ebap)
+        query = query.filter(WaterRecord.ebap.ilike(ebap))
     if company_type:
-        query = query.filter(WaterRecord.company_type == company_type)
+        query = query.filter(WaterRecord.company_type.ilike(company_type))
     start = parse_filter_date(date_from)
     if start:
         query = query.filter(WaterRecord.timestamp >= start)

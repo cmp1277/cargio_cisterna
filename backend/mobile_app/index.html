@@ -167,6 +167,16 @@
       box-shadow: 0 0 0 4px rgba(33, 214, 211, 0.18);
     }
 
+    #driver-name,
+    #plate-number,
+    #company-type,
+    #company-name,
+    #employee-code,
+    #characteristics,
+    #ebap {
+      text-transform: uppercase;
+    }
+
     .field { margin-bottom: 15px; }
 
     .grid {
@@ -392,7 +402,7 @@
 
         <div class="field span-2">
           <label for="plate-number">Placa</label>
-          <input id="plate-number" required>
+          <input id="plate-number" required maxlength="10" placeholder="Ej: 2127 - ACC">
         </div>
 
         <div class="field">
@@ -425,7 +435,7 @@
 
         <div class="field span-2">
           <label for="company-name">Empresa / Entidad</label>
-          <input id="company-name" required placeholder="Ej: Constructora Andina">
+          <input id="company-name" required placeholder="Ej: CONSTRUCTORA ANDINA">
         </div>
 
         <div class="field span-2">
@@ -586,6 +596,37 @@
       return volume;
     }
 
+    function uppercaseValue(value) {
+      return String(value || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    }
+
+    function formatPlateValue(value) {
+      const raw = uppercaseValue(value).replace(/[^A-Z0-9]/g, '');
+      const digits = raw.replace(/[^0-9]/g, '').slice(0, 4);
+      const letters = raw.replace(/[^A-Z]/g, '').slice(0, 3);
+      if (!letters) return digits;
+      return `${digits} - ${letters}`;
+    }
+
+    function isValidPlate(value) {
+      return /^\d{4} - [A-Z]{3}$/.test(value);
+    }
+
+    function upperFieldValue(id) {
+      return uppercaseValue(document.getElementById(id).value);
+    }
+
+    function installUppercaseInputs() {
+      ['driver-name', 'company-name', 'employee-code', 'characteristics'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', (event) => {
+          event.target.value = event.target.value.toUpperCase();
+        });
+      });
+      document.getElementById('plate-number').addEventListener('input', (event) => {
+        event.target.value = formatPlateValue(event.target.value);
+      });
+    }
+
     async function login(username, password) {
       loginButton.disabled = true;
       setMessage(loginMessage, 'Verificando credenciales...');
@@ -640,6 +681,7 @@
     document.getElementById('logout-button').addEventListener('click', logout);
     document.getElementById('initial-reading').addEventListener('input', updateCalculatedVolume);
     document.getElementById('final-reading').addEventListener('input', updateCalculatedVolume);
+    installUppercaseInputs();
 
     waterForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -660,20 +702,27 @@
         return;
       }
 
+      const plateNumber = formatPlateValue(document.getElementById('plate-number').value);
+      document.getElementById('plate-number').value = plateNumber;
+      if (!isValidPlate(plateNumber)) {
+        setMessage(saveMessage, 'La placa debe tener el formato 2127 - ACC.', 'error');
+        return;
+      }
+
       const user = getStoredUser();
       const payload = {
         action: 'saveData',
         token: user.token,
-        driverName: document.getElementById('driver-name').value.trim(),
-        plateNumber: document.getElementById('plate-number').value.trim(),
-        employeeCode: document.getElementById('employee-code').value.trim(),
-        ebap: document.getElementById('ebap').value,
+        driverName: upperFieldValue('driver-name'),
+        plateNumber,
+        employeeCode: upperFieldValue('employee-code'),
+        ebap: upperFieldValue('ebap'),
         initialReading: initial,
         finalReading: final,
         loadVolume: volume,
-        companyType: document.getElementById('company-type').value,
-        companyName: document.getElementById('company-name').value.trim(),
-        characteristics: document.getElementById('characteristics').value.trim(),
+        companyType: upperFieldValue('company-type'),
+        companyName: upperFieldValue('company-name'),
+        characteristics: upperFieldValue('characteristics'),
       };
 
       submitButton.disabled = true;

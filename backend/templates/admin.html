@@ -181,6 +181,12 @@
       box-shadow: 0 0 0 4px rgba(33, 214, 211, 0.18);
     }
 
+    #record-edit-form input:not([type="number"]),
+    #record-edit-form select,
+    #record-edit-form textarea {
+      text-transform: uppercase;
+    }
+
     .field { margin-bottom: 16px; }
 
     .btn {
@@ -668,7 +674,7 @@
         </div>
         <div class="field">
           <label for="editPlateNumber">Placa</label>
-          <input id="editPlateNumber" name="plateNumber" required>
+          <input id="editPlateNumber" name="plateNumber" maxlength="10" placeholder="Ej: 2127 - ACC" required>
         </div>
         <div class="field">
           <label for="editEmployeeCode">Codigo funcionario</label>
@@ -923,11 +929,15 @@
 
     function setEditField(name, value) {
       const field = editField(name);
-      if (field.tagName === 'SELECT') {
-        setSelectValue(field, value);
+      if (name === 'plateNumber') {
+        field.value = formatPlateValue(value);
         return;
       }
-      field.value = value ?? '';
+      if (field.tagName === 'SELECT') {
+        setSelectValue(field, uppercaseValue(value));
+        return;
+      }
+      field.value = field.type === 'number' ? value ?? '' : uppercaseValue(value);
     }
 
     function openEditModal(record) {
@@ -958,7 +968,7 @@
     }
 
     function requiredText(name, label) {
-      const value = String(editField(name).value || '').trim();
+      const value = uppercaseValue(editField(name).value);
       if (!value) throw new Error(`${label} es obligatorio.`);
       return value;
     }
@@ -972,6 +982,22 @@
       return value;
     }
 
+    function uppercaseValue(value) {
+      return String(value || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    }
+
+    function formatPlateValue(value) {
+      const raw = uppercaseValue(value).replace(/[^A-Z0-9]/g, '');
+      const digits = raw.replace(/[^0-9]/g, '').slice(0, 4);
+      const letters = raw.replace(/[^A-Z]/g, '').slice(0, 3);
+      if (!letters) return digits;
+      return `${digits} - ${letters}`;
+    }
+
+    function isValidPlate(value) {
+      return /^\d{4} - [A-Z]{3}$/.test(value);
+    }
+
     function editedRecordPayload() {
       const initialReading = numericValue('initialReading', 'Lectura inicial');
       const finalReading = numericValue('finalReading', 'Lectura final');
@@ -983,9 +1009,15 @@
       const loadVolume = enteredVolume ?? Math.round((finalReading - initialReading) * 100) / 100;
       if (loadVolume <= 0) throw new Error('El volumen debe ser mayor a cero.');
 
+      const plateNumber = formatPlateValue(requiredText('plateNumber', 'Placa'));
+      editField('plateNumber').value = plateNumber;
+      if (!isValidPlate(plateNumber)) {
+        throw new Error('La placa debe tener el formato 2127 - ACC.');
+      }
+
       return {
         driverName: requiredText('driverName', 'Conductor'),
-        plateNumber: requiredText('plateNumber', 'Placa'),
+        plateNumber,
         employeeCode: requiredText('employeeCode', 'Codigo funcionario'),
         ebap: requiredText('ebap', 'EBAP'),
         initialReading,
@@ -993,7 +1025,7 @@
         loadVolume,
         companyType: requiredText('companyType', 'Tipo'),
         companyName: requiredText('companyName', 'Empresa/Entidad'),
-        characteristics: String(editField('characteristics').value || '').trim(),
+        characteristics: uppercaseValue(editField('characteristics').value),
       };
     }
 
@@ -1026,6 +1058,15 @@
     recordEditClose.addEventListener('click', closeEditModal);
     recordEditModal.addEventListener('click', (event) => {
       if (event.target === recordEditModal) closeEditModal();
+    });
+    recordEditForm.addEventListener('input', (event) => {
+      if (event.target.name === 'plateNumber') {
+        event.target.value = formatPlateValue(event.target.value);
+        return;
+      }
+      if (['driverName', 'employeeCode', 'companyName', 'characteristics'].includes(event.target.name)) {
+        event.target.value = event.target.value.toUpperCase();
+      }
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !recordEditModal.classList.contains('hidden')) {
