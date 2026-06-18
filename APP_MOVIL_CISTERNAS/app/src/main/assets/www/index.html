@@ -65,12 +65,45 @@
     }
 
     .login-card .brand {
+      position: relative;
       margin: 0;
       padding: 30px 30px 26px;
       color: white;
       background:
         radial-gradient(circle at 88% 22%, rgba(33, 214, 211, 0.22), transparent 12rem),
         linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 58%, var(--navy-3) 100%);
+      overflow: hidden;
+    }
+
+    .login-card .brand::before,
+    .login-card .brand::after {
+      content: "";
+      position: absolute;
+      inset: -45% 0 0;
+      pointer-events: none;
+      background-image:
+        repeating-linear-gradient(108deg, rgba(255,255,255,0.0) 0 18px, rgba(255,255,255,0.24) 19px 20px, rgba(255,255,255,0.0) 21px 42px);
+      transform: translate3d(0, -30%, 0);
+      animation: scpeRain 1.15s linear infinite;
+      opacity: 0.48;
+    }
+
+    .login-card .brand::after {
+      inset: -60% 0 0;
+      background-image:
+        repeating-linear-gradient(108deg, rgba(33,214,211,0.0) 0 24px, rgba(33,214,211,0.32) 25px 26px, rgba(33,214,211,0.0) 27px 58px);
+      animation-duration: 1.8s;
+      opacity: 0.34;
+    }
+
+    .login-card .brand > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    @keyframes scpeRain {
+      from { transform: translate3d(-18px, -34%, 0); }
+      to { transform: translate3d(18px, 24%, 0); }
     }
 
     .login-card form { padding: 26px 30px 30px; }
@@ -261,6 +294,13 @@
         flex-direction: column;
       }
       .topbar .row { flex-direction: row; flex-wrap: wrap; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .login-card .brand::before,
+      .login-card .brand::after {
+        animation: none;
+      }
     }
   </style>
 </head>
