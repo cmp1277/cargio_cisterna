@@ -26,6 +26,7 @@
     body {
       margin: 0;
       min-height: 100vh;
+      overflow-x: hidden;
       color: var(--ink);
       font-family: "Trebuchet MS", "Segoe UI", sans-serif;
       background:
@@ -37,7 +38,7 @@
     .hidden { display: none !important; }
 
     .shell {
-      width: min(1180px, calc(100% - 28px));
+      width: min(1560px, calc(100% - 24px));
       margin: 0 auto;
       padding: 28px 0 42px;
     }
@@ -324,15 +325,25 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 1240px;
+      min-width: 100%;
       background: #fbfdff;
     }
 
     th, td {
-      padding: 12px 14px;
+      padding: 11px 12px;
       border-bottom: 1px solid #dbe9f3;
       text-align: left;
       vertical-align: top;
+    }
+
+    .records-table {
+      min-width: 1320px;
+    }
+
+    .records-table th:last-child,
+    .records-table td:last-child {
+      width: 168px;
+      min-width: 168px;
     }
 
     th {
@@ -350,9 +361,9 @@
 
     .table-actions {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 8px;
-      min-width: 150px;
+      min-width: 144px;
     }
 
     .modal-backdrop {
@@ -361,14 +372,14 @@
       z-index: 30;
       display: grid;
       place-items: center;
-      padding: 18px;
+      padding: 12px;
       background: rgba(6, 40, 61, 0.58);
       backdrop-filter: blur(7px);
     }
 
     .modal-card {
-      width: min(900px, 100%);
-      max-height: calc(100vh - 36px);
+      width: min(1120px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
       overflow: auto;
       background: var(--surface);
       border: 1px solid rgba(255,255,255,0.45);
@@ -381,7 +392,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      padding: 22px 24px;
+      padding: 16px 20px;
       color: white;
       background:
         radial-gradient(circle at 92% 18%, rgba(33, 214, 211, 0.24), transparent 16rem),
@@ -390,7 +401,7 @@
 
     .modal-head h2 {
       margin: 0 0 4px;
-      font-size: 26px;
+      font-size: 24px;
       letter-spacing: -0.04em;
     }
 
@@ -398,18 +409,23 @@
 
     .edit-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      padding: 22px 24px 8px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px 12px;
+      padding: 16px 20px 8px;
     }
 
-    .edit-grid .wide { grid-column: 1 / -1; }
+    .edit-grid .field { margin-bottom: 6px; }
+    .edit-grid .wide { grid-column: span 2; }
+    .edit-grid textarea { min-height: 56px; }
 
     .modal-actions {
+      position: sticky;
+      bottom: 0;
       display: flex;
       justify-content: flex-end;
       gap: 10px;
-      padding: 16px 24px 22px;
+      padding: 12px 20px 16px;
+      background: var(--surface);
       border-top: 1px solid var(--line);
     }
 
@@ -443,6 +459,7 @@
       .topbar, .filters { grid-template-columns: 1fr; }
       .user-admin { grid-template-columns: 1fr; }
       .edit-grid { grid-template-columns: 1fr; }
+      .edit-grid .wide { grid-column: 1 / -1; }
       .topbar {
         align-items: flex-start;
         flex-direction: column;
@@ -610,7 +627,7 @@
       </form>
 
       <div class="table-wrap">
-        <table>
+        <table class="records-table">
           <thead>
             <tr>
               <th>ID</th>
