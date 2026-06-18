@@ -104,7 +104,16 @@ backend/render.yaml
 
 6. Render mostrara un servicio web `cisternas-api` y una base PostgreSQL `cisternas-db`.
 
-7. Antes de desplegar, define las variables marcadas como secretas:
+7. El Blueprint usa planes gratuitos:
+
+```text
+Web Service: free
+PostgreSQL: free
+```
+
+La base PostgreSQL gratuita de Render expira despues de 30 dias. Para uso real permanente, cambia la base a un plan pagado antes de depender de ella en produccion.
+
+8. Antes de desplegar, define las variables marcadas como secretas:
 
 ```text
 ADMIN_PASSWORD
@@ -112,7 +121,7 @@ USER_PASSWORD
 CLIENT_PASSWORD
 ```
 
-8. Haz clic en `Deploy Blueprint`.
+9. Haz clic en `Deploy Blueprint`.
 
 Cuando termine, Render te dara una URL parecida a:
 

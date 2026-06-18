@@ -3,7 +3,7 @@ services:
     name: cisternas-api
     runtime: python
     rootDir: backend
-    plan: starter
+    plan: free
     healthCheckPath: /api/health
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
@@ -27,4 +27,4 @@ services:
 
 databases:
   - name: cisternas-db
-    plan: starter
+    plan: free
