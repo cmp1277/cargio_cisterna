@@ -5,6 +5,7 @@ import hashlib
 import io
 import os
 import secrets
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
@@ -13,6 +14,11 @@ from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from openpyxl import Workbook, load_workbook
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import landscape, letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -22,6 +28,37 @@ MOBILE_APP_DIR = BASE_DIR / "mobile_app"
 load_dotenv(BASE_DIR / ".env")
 
 db = SQLAlchemy()
+
+RECORD_EXPORT_HEADERS = [
+    "ID",
+    "Fecha UTC",
+    "Conductor",
+    "Placa",
+    "Codigo funcionario",
+    "EBAP",
+    "Lectura inicial",
+    "Lectura final",
+    "Volumen",
+    "Tipo empresa",
+    "Empresa/Entidad",
+    "Caracteristicas",
+    "Registrado por",
+]
+
+IMPORT_ALIASES = {
+    "timestamp": {"fechautc", "fecha", "timestamp", "timestampiso", "date"},
+    "driver_name": {"conductor", "chofer", "driver", "drivername", "drivername"},
+    "plate_number": {"placa", "plate", "platenumber", "platenumber"},
+    "employee_code": {"codigofuncionario", "funcionario", "employeecode", "employeecode", "codigo"},
+    "ebap": {"ebap"},
+    "initial_reading": {"lecturainicial", "inicial", "initialreading", "initialreading"},
+    "final_reading": {"lecturafinal", "final", "finalreading", "finalreading"},
+    "load_volume": {"volumen", "volumencalculado", "loadvolume", "loadvolume"},
+    "company_type": {"tipoempresa", "tipo", "companytype", "companytype"},
+    "company_name": {"empresaentidad", "empresa", "entidad", "companyname", "companyname"},
+    "characteristics": {"caracteristicas", "observaciones", "characteristics"},
+    "registered_by": {"registradopor", "usuario", "registeredby", "registeredby"},
+}
 
 
 def utcnow() -> datetime:
@@ -283,6 +320,175 @@ def user_to_dict(user: User) -> dict:
     }
 
 
+def record_export_row(record: WaterRecord) -> list:
+    return [
+        record.id,
+        as_utc(record.timestamp).isoformat(),
+        record.driver_name,
+        record.plate_number,
+        record.employee_code,
+        record.ebap,
+        record.initial_reading,
+        record.final_reading,
+        record.load_volume,
+        record.company_type,
+        record.company_name,
+        record.characteristics or "",
+        record.registered_by,
+    ]
+
+
+def normalize_header(value) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return "".join(char.lower() for char in text if char.isalnum())
+
+
+def normalized_import_row(row: dict) -> dict:
+    return {normalize_header(key): value for key, value in row.items() if key is not None}
+
+
+def import_value(row: dict, field: str, default: str = ""):
+    aliases = IMPORT_ALIASES[field]
+    for alias in aliases:
+        if alias in row and row[alias] not in (None, ""):
+            return row[alias]
+    return default
+
+
+def parse_import_float(value, field_label: str) -> float:
+    if value is None or value == "":
+        raise ValueError(f"{field_label} requerido.")
+    try:
+        return float(str(value).replace(",", ".").strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_label} no es numerico.") from exc
+
+
+def parse_import_timestamp(value) -> datetime:
+    if isinstance(value, datetime):
+        return as_utc(value)
+    if value is None or value == "":
+        return utcnow()
+
+    raw = str(value).strip()
+    if not raw:
+        return utcnow()
+
+    try:
+        numeric = float(raw)
+        if numeric > 1_000_000_000_000:
+            return datetime.fromtimestamp(numeric / 1000, tz=timezone.utc)
+        if numeric > 1_000_000_000:
+            return datetime.fromtimestamp(numeric, tz=timezone.utc)
+    except ValueError:
+        pass
+
+    iso_value = raw.replace("Z", "+00:00")
+    try:
+        return as_utc(datetime.fromisoformat(iso_value))
+    except ValueError:
+        pass
+
+    for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%y %H:%M", "%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+
+    return utcnow()
+
+
+def read_csv_import_rows(file_storage) -> list[dict]:
+    raw = file_storage.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def read_xlsx_import_rows(file_storage) -> list[dict]:
+    file_storage.stream.seek(0)
+    workbook = load_workbook(io.BytesIO(file_storage.read()), read_only=True, data_only=True)
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    if not rows:
+        return []
+    headers = [str(value or "").strip() for value in rows[0]]
+    result = []
+    for row_values in rows[1:]:
+        if not any(value not in (None, "") for value in row_values):
+            continue
+        result.append({headers[index]: row_values[index] if index < len(row_values) else "" for index in range(len(headers))})
+    return result
+
+
+def read_import_rows(file_storage) -> list[dict]:
+    filename = (file_storage.filename or "").lower()
+    if filename.endswith(".xlsx"):
+        return read_xlsx_import_rows(file_storage)
+    if filename.endswith(".csv"):
+        return read_csv_import_rows(file_storage)
+    raise ValueError("Formato no soportado. Use CSV o XLSX.")
+
+
+def build_import_record(row: dict, fallback_username: str) -> WaterRecord:
+    normalized = normalized_import_row(row)
+
+    driver_name = str(import_value(normalized, "driver_name")).strip()
+    plate_number = str(import_value(normalized, "plate_number")).strip().upper()
+    employee_code = str(import_value(normalized, "employee_code")).strip()
+    ebap = str(import_value(normalized, "ebap")).strip()
+    company_type = str(import_value(normalized, "company_type")).strip()
+    company_name = str(import_value(normalized, "company_name")).strip()
+    characteristics = str(import_value(normalized, "characteristics")).strip()
+
+    if not company_type and " / " in company_name:
+        company_type, company_name = [part.strip() for part in company_name.split(" / ", 1)]
+
+    required = {
+        "Conductor": driver_name,
+        "Placa": plate_number,
+        "Codigo funcionario": employee_code,
+        "EBAP": ebap,
+        "Tipo empresa": company_type,
+        "Empresa/Entidad": company_name,
+    }
+    missing = [label for label, value in required.items() if not value]
+    if missing:
+        raise ValueError("Faltan campos: " + ", ".join(missing) + ".")
+
+    initial = parse_import_float(import_value(normalized, "initial_reading"), "Lectura inicial")
+    final = parse_import_float(import_value(normalized, "final_reading"), "Lectura final")
+    if initial < 0 or final < 0 or final <= initial:
+        raise ValueError("Lecturas invalidas.")
+
+    volume_value = import_value(normalized, "load_volume", "")
+    load_volume = parse_import_float(volume_value, "Volumen") if volume_value not in (None, "") else round(final - initial, 2)
+    if load_volume <= 0:
+        raise ValueError("Volumen invalido.")
+
+    registered_by = str(import_value(normalized, "registered_by", fallback_username)).strip() or fallback_username
+    if not User.query.get(registered_by):
+        registered_by = fallback_username
+
+    return WaterRecord(
+        timestamp=parse_import_timestamp(import_value(normalized, "timestamp", "")),
+        driver_name=driver_name,
+        plate_number=plate_number,
+        employee_code=employee_code,
+        ebap=ebap,
+        initial_reading=initial,
+        final_reading=final,
+        load_volume=round(load_volume, 2),
+        company_type=company_type,
+        company_name=company_name,
+        characteristics=characteristics,
+        registered_by=registered_by,
+    )
+
+
 def login_action(data: dict):
     username = clean_text(data, "username")
     password = str(data.get("password", ""))
@@ -474,46 +680,139 @@ def register_routes(app: Flask) -> None:
 
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(
-            [
-                "ID",
-                "Fecha UTC",
-                "Conductor",
-                "Placa",
-                "Codigo funcionario",
-                "EBAP",
-                "Lectura inicial",
-                "Lectura final",
-                "Volumen",
-                "Tipo empresa",
-                "Empresa/Entidad",
-                "Caracteristicas",
-                "Registrado por",
-            ]
-        )
+        writer.writerow(RECORD_EXPORT_HEADERS)
         for record in records:
-            writer.writerow(
-                [
-                    record.id,
-                    as_utc(record.timestamp).isoformat(),
-                    record.driver_name,
-                    record.plate_number,
-                    record.employee_code,
-                    record.ebap,
-                    record.initial_reading,
-                    record.final_reading,
-                    record.load_volume,
-                    record.company_type,
-                    record.company_name,
-                    record.characteristics or "",
-                    record.registered_by,
-                ]
-            )
+            writer.writerow(record_export_row(record))
 
         return Response(
             output.getvalue(),
             mimetype="text/csv; charset=utf-8",
             headers={"Content-Disposition": "attachment; filename=registros_cisternas.csv"},
+        )
+
+    @app.get("/api/records/export.xlsx")
+    @require_auth(admin=True)
+    def export_records_xlsx():
+        query = apply_record_filters(WaterRecord.query)
+        records = query.order_by(WaterRecord.id.desc()).limit(10000).all()
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Registros"
+        sheet.append(RECORD_EXPORT_HEADERS)
+        for record in records:
+            sheet.append(record_export_row(record))
+
+        widths = [8, 24, 26, 14, 18, 14, 16, 16, 12, 24, 28, 34, 18]
+        for index, width in enumerate(widths, start=1):
+            sheet.column_dimensions[chr(64 + index)].width = width
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=registros_cisternas.xlsx"},
+        )
+
+    @app.get("/api/records/export.pdf")
+    @require_auth(admin=True)
+    def export_records_pdf():
+        query = apply_record_filters(WaterRecord.query)
+        records = query.order_by(WaterRecord.id.desc()).limit(2000).all()
+
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(
+            output,
+            pagesize=landscape(letter),
+            rightMargin=24,
+            leftMargin=24,
+            topMargin=24,
+            bottomMargin=24,
+        )
+        styles = getSampleStyleSheet()
+        elements = [
+            Paragraph("Registro de carguio de cisternas - SCPE", styles["Title"]),
+            Paragraph(f"Registros exportados: {len(records)}", styles["Normal"]),
+            Spacer(1, 12),
+        ]
+
+        pdf_headers = ["ID", "Fecha", "Conductor", "Placa", "Func.", "EBAP", "Lecturas", "Vol.", "Empresa", "Obs.", "Usuario"]
+        table_data = [pdf_headers]
+        for record in records:
+            row = [
+                record.id,
+                as_utc(record.timestamp).strftime("%d/%m/%Y %H:%M"),
+                record.driver_name,
+                record.plate_number,
+                record.employee_code,
+                record.ebap,
+                f"{record.initial_reading:g} -> {record.final_reading:g}",
+                f"{record.load_volume:.2f}",
+                f"{record.company_type} / {record.company_name}",
+                record.characteristics or "",
+                record.registered_by,
+            ]
+            table_data.append([Paragraph(str(value), styles["BodyText"]) for value in row])
+
+        table = Table(table_data, repeatRows=1, colWidths=[28, 76, 90, 58, 52, 58, 68, 44, 130, 120, 58])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b3f59")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cfe0ed")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f1fbfd")]),
+                ]
+            )
+        )
+        elements.append(table)
+        doc.build(elements)
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=registros_cisternas.pdf"},
+        )
+
+    @app.post("/api/records/import")
+    @require_auth(admin=True)
+    def import_records():
+        file_storage = request.files.get("file")
+        if file_storage is None or not file_storage.filename:
+            return api_error("Seleccione un archivo CSV o XLSX.")
+
+        try:
+            rows = read_import_rows(file_storage)
+        except ValueError as exc:
+            return api_error(str(exc))
+
+        imported = 0
+        skipped = 0
+        errors = []
+        for index, row in enumerate(rows, start=2):
+            try:
+                db.session.add(build_import_record(row, request.current_user.username))
+                imported += 1
+            except ValueError as exc:
+                skipped += 1
+                if len(errors) < 20:
+                    errors.append(f"Fila {index}: {exc}")
+
+        if imported:
+            db.session.commit()
+        else:
+            db.session.rollback()
+
+        return api_success(
+            "Importacion finalizada",
+            imported=imported,
+            skipped=skipped,
+            errors=errors,
         )
 
     @app.get("/api/users")

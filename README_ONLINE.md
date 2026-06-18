@@ -36,6 +36,8 @@ Desde el panel administrador puedes crear mas usuarios. Usa rol `Administrador` 
 
 Tambien puedes desactivar usuarios que ya no se utilicen. La desactivacion bloquea el login, pero conserva los registros historicos asociados a ese usuario.
 
+El panel administrador permite importar registros desde archivos `.csv` o `.xlsx`, y exportar los registros filtrados en `.csv`, `.xlsx` o `.pdf`.
+
 ## Configurar la app movil
 
 Edita:
