@@ -77,3 +77,59 @@ Para que varios celulares funcionen desde cualquier lugar, necesitas publicar `b
 - Dominio o subdominio HTTPS para la API.
 
 No pongas credenciales de base de datos dentro del APK. La app solo debe conocer la URL HTTPS de la API.
+
+## Publicar en Render
+
+1. Entra a:
+
+```text
+https://dashboard.render.com/
+```
+
+2. Conecta tu cuenta de GitHub.
+
+3. Selecciona `New` > `Blueprint`.
+
+4. Elige el repositorio:
+
+```text
+cmp1277/cargio_cisterna
+```
+
+5. En `Blueprint Path`, coloca:
+
+```text
+backend/render.yaml
+```
+
+6. Render mostrara un servicio web `cisternas-api` y una base PostgreSQL `cisternas-db`.
+
+7. Antes de desplegar, define las variables marcadas como secretas:
+
+```text
+ADMIN_PASSWORD
+USER_PASSWORD
+CLIENT_PASSWORD
+```
+
+8. Haz clic en `Deploy Blueprint`.
+
+Cuando termine, Render te dara una URL parecida a:
+
+```text
+https://cisternas-api.onrender.com
+```
+
+La API movil sera:
+
+```text
+https://cisternas-api.onrender.com/api/mobile
+```
+
+El panel administrador sera:
+
+```text
+https://cisternas-api.onrender.com/admin
+```
+
+Despues cambia esa URL en la app movil y recompila el APK.
