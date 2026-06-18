@@ -489,6 +489,44 @@ def build_import_record(row: dict, fallback_username: str) -> WaterRecord:
     )
 
 
+def validated_record_values(data: dict) -> dict:
+    required_text = {
+        "driverName": clean_text(data, "driverName"),
+        "plateNumber": clean_text(data, "plateNumber").upper(),
+        "employeeCode": clean_text(data, "employeeCode"),
+        "ebap": clean_text(data, "ebap"),
+        "companyType": clean_text(data, "companyType"),
+        "companyName": clean_text(data, "companyName"),
+    }
+    if any(not value for value in required_text.values()):
+        raise ValueError("Complete todos los campos obligatorios.")
+
+    initial = parse_float(data, "initialReading")
+    final = parse_float(data, "finalReading")
+    volume = parse_float(data, "loadVolume")
+    if initial is None or final is None or initial < 0 or final < 0 or final <= initial:
+        raise ValueError("Las lecturas no son validas.")
+
+    calculated_volume = round(final - initial, 2)
+    if volume is None or volume <= 0:
+        volume = calculated_volume
+    if volume <= 0:
+        raise ValueError("El volumen calculado debe ser mayor a cero.")
+
+    return {
+        "driver_name": required_text["driverName"],
+        "plate_number": required_text["plateNumber"],
+        "employee_code": required_text["employeeCode"],
+        "ebap": required_text["ebap"],
+        "initial_reading": initial,
+        "final_reading": final,
+        "load_volume": round(volume, 2),
+        "company_type": required_text["companyType"],
+        "company_name": required_text["companyName"],
+        "characteristics": clean_text(data, "characteristics"),
+    }
+
+
 def login_action(data: dict):
     username = clean_text(data, "username")
     password = str(data.get("password", ""))
@@ -519,41 +557,14 @@ def save_record_action(data: dict):
     if user is None:
         return api_error("Sesion expirada. Inicie sesion nuevamente.", 401)
 
-    required_text = {
-        "driverName": clean_text(data, "driverName"),
-        "plateNumber": clean_text(data, "plateNumber").upper(),
-        "employeeCode": clean_text(data, "employeeCode"),
-        "ebap": clean_text(data, "ebap"),
-        "companyType": clean_text(data, "companyType"),
-        "companyName": clean_text(data, "companyName"),
-    }
-    if any(not value for value in required_text.values()):
-        return api_error("Complete todos los campos obligatorios.")
-
-    initial = parse_float(data, "initialReading")
-    final = parse_float(data, "finalReading")
-    volume = parse_float(data, "loadVolume")
-    if initial is None or final is None or initial < 0 or final < 0 or final <= initial:
-        return api_error("Las lecturas no son validas.")
-
-    calculated_volume = round(final - initial, 2)
-    if volume is None or volume <= 0:
-        volume = calculated_volume
-    if volume <= 0:
-        return api_error("El volumen calculado debe ser mayor a cero.")
+    try:
+        values = validated_record_values(data)
+    except ValueError as exc:
+        return api_error(str(exc))
 
     record = WaterRecord(
         timestamp=utcnow(),
-        driver_name=required_text["driverName"],
-        plate_number=required_text["plateNumber"],
-        employee_code=required_text["employeeCode"],
-        ebap=required_text["ebap"],
-        initial_reading=initial,
-        final_reading=final,
-        load_volume=round(volume, 2),
-        company_type=required_text["companyType"],
-        company_name=required_text["companyName"],
-        characteristics=clean_text(data, "characteristics"),
+        **values,
         registered_by=user.username,
     )
     db.session.add(record)
@@ -671,6 +682,35 @@ def register_routes(app: Flask) -> None:
             total=len(records),
             totalVolume=total_volume,
         )
+
+    @app.patch("/api/records/<int:record_id>")
+    @require_auth(admin=True)
+    def api_update_record(record_id: int):
+        record = WaterRecord.query.get(record_id)
+        if not record:
+            return api_error("Registro no encontrado.", 404)
+
+        try:
+            values = validated_record_values(request.get_json(silent=True) or {})
+        except ValueError as exc:
+            return api_error(str(exc))
+
+        for field, value in values.items():
+            setattr(record, field, value)
+
+        db.session.commit()
+        return api_success("Registro actualizado", record=record_to_dict(record))
+
+    @app.delete("/api/records/<int:record_id>")
+    @require_auth(admin=True)
+    def api_delete_record(record_id: int):
+        record = WaterRecord.query.get(record_id)
+        if not record:
+            return api_error("Registro no encontrado.", 404)
+
+        db.session.delete(record)
+        db.session.commit()
+        return api_success("Registro eliminado")
 
     @app.get("/api/records/export.csv")
     @require_auth(admin=True)

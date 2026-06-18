@@ -223,6 +223,15 @@
       transform: none;
     }
 
+    .btn.small {
+      min-height: 34px;
+      padding: 7px 10px;
+      border-left-width: 3px;
+      border-radius: 12px;
+      box-shadow: none;
+      font-size: 12px;
+    }
+
     .topbar {
       display: flex;
       align-items: center;
@@ -310,7 +319,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 1080px;
+      min-width: 1240px;
       background: #fbfdff;
     }
 
@@ -333,6 +342,13 @@
     }
 
     tbody tr:hover { background: #f1fbfd; }
+
+    .table-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 150px;
+    }
 
     .badge {
       display: inline-block;
@@ -544,6 +560,7 @@
               <th>Empresa</th>
               <th>Observaciones</th>
               <th>Usuario</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="records-body"></tbody>
@@ -635,6 +652,102 @@
       return td;
     }
 
+    function actionButton(text, className, onClick) {
+      const button = document.createElement('button');
+      button.className = `btn small ${className || ''}`.trim();
+      button.type = 'button';
+      button.textContent = text;
+      button.addEventListener('click', onClick);
+      return button;
+    }
+
+    function recordActions(record) {
+      const td = document.createElement('td');
+      const wrap = document.createElement('div');
+      wrap.className = 'table-actions';
+      wrap.append(
+        actionButton('Editar', 'secondary', () => editRecord(record)),
+        actionButton('Eliminar', 'danger', () => deleteRecord(record))
+      );
+      td.appendChild(wrap);
+      return td;
+    }
+
+    function promptText(label, current, required = true) {
+      while (true) {
+        const value = window.prompt(label, current ?? '');
+        if (value === null) return null;
+        const clean = value.trim();
+        if (!required || clean) return clean;
+        alert(`${label} es obligatorio.`);
+      }
+    }
+
+    function promptNumber(label, current) {
+      while (true) {
+        const value = window.prompt(label, current ?? '');
+        if (value === null) return { ok: false };
+        const parsed = Number(value.trim().replace(',', '.'));
+        if (Number.isFinite(parsed)) return { ok: true, value: parsed };
+        alert(`${label} debe ser numerico.`);
+      }
+    }
+
+    function promptMaybeNumber(label, current) {
+      while (true) {
+        const value = window.prompt(label, current ?? '');
+        if (value === null) return { ok: false };
+        const clean = value.trim();
+        if (!clean) return { ok: true, value: null };
+        const parsed = Number(clean.replace(',', '.'));
+        if (Number.isFinite(parsed)) return { ok: true, value: parsed };
+        alert(`${label} debe ser numerico.`);
+      }
+    }
+
+    function editedRecordPayload(record) {
+      const driverName = promptText('Conductor', record.driverName);
+      if (driverName === null) return null;
+      const plateNumber = promptText('Placa', record.plateNumber);
+      if (plateNumber === null) return null;
+      const employeeCode = promptText('Codigo funcionario', record.employeeCode);
+      if (employeeCode === null) return null;
+      const ebap = promptText('EBAP', record.ebap);
+      if (ebap === null) return null;
+      const initial = promptNumber('Lectura inicial', record.initialReading);
+      if (!initial.ok) return null;
+      const final = promptNumber('Lectura final', record.finalReading);
+      if (!final.ok) return null;
+      if (final.value <= initial.value) {
+        alert('La lectura final debe ser mayor que la lectura inicial.');
+        return null;
+      }
+      const volume = promptMaybeNumber('Volumen (deje vacio para calcular automaticamente)', record.loadVolume);
+      if (!volume.ok) return null;
+      const companyType = promptText(
+        'Tipo de empresa (Gobierno Nacional, Gobierno Departamental, Gobierno Municipal, Bomberos, Ayuda Comunitaria, Particular)',
+        record.companyType
+      );
+      if (companyType === null) return null;
+      const companyName = promptText('Empresa/Entidad', record.companyName);
+      if (companyName === null) return null;
+      const characteristics = promptText('Observaciones', record.characteristics || '', false);
+      if (characteristics === null) return null;
+
+      return {
+        driverName,
+        plateNumber,
+        employeeCode,
+        ebap,
+        initialReading: initial.value,
+        finalReading: final.value,
+        loadVolume: volume.value ?? Math.round((final.value - initial.value) * 100) / 100,
+        companyType,
+        companyName,
+        characteristics,
+      };
+    }
+
     function renderRecords(records, totalVolume) {
       recordsBody.textContent = '';
       emptyState.classList.toggle('hidden', records.length > 0);
@@ -655,7 +768,8 @@
           cell(Number(record.loadVolume).toFixed(2)),
           cell(`${record.companyType} / ${record.companyName}`),
           cell(record.characteristics || ''),
-          cell(record.registeredBy)
+          cell(record.registeredBy),
+          recordActions(record)
         );
         recordsBody.appendChild(tr);
       }
@@ -704,6 +818,36 @@
           body: JSON.stringify({ active: nextActive }),
         });
         await loadUsers();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function editRecord(record) {
+      const payload = editedRecordPayload(record);
+      if (!payload) return;
+
+      try {
+        await api(`/api/records/${record.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        await loadRecords();
+        alert('Registro actualizado correctamente.');
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function deleteRecord(record) {
+      if (!confirm(`Desea eliminar el registro #${record.id} de ${record.driverName}? Esta accion no se puede deshacer.`)) {
+        return;
+      }
+
+      try {
+        await api(`/api/records/${record.id}`, { method: 'DELETE' });
+        await loadRecords();
+        alert('Registro eliminado correctamente.');
       } catch (error) {
         alert(error.message);
       }
