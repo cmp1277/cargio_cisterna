@@ -27,3 +27,16 @@ Thumbs.db
 *.log
 tmp/
 temp/
+
+# Legacy local drafts not included in the deployable online app
+/CISTERNA/
+/INTENTO 2/
+/TODO.md
+/app.py
+/html.txt
+/index.html
+/logo.png
+/requirements.txt
+/script original.txt
+/script original2.txt
+/yo.html
