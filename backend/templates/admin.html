@@ -159,7 +159,7 @@
       letter-spacing: 0.07em;
     }
 
-    input, select {
+    input, select, textarea {
       width: 100%;
       min-height: 44px;
       padding: 11px 13px;
@@ -170,7 +170,12 @@
       outline: none;
     }
 
-    input:focus, select:focus {
+    textarea {
+      min-height: 84px;
+      resize: vertical;
+    }
+
+    input:focus, select:focus, textarea:focus {
       border-color: var(--cyan);
       box-shadow: 0 0 0 4px rgba(33, 214, 211, 0.18);
     }
@@ -350,6 +355,64 @@
       min-width: 150px;
     }
 
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(6, 40, 61, 0.58);
+      backdrop-filter: blur(7px);
+    }
+
+    .modal-card {
+      width: min(900px, 100%);
+      max-height: calc(100vh - 36px);
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.45);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 22px 24px;
+      color: white;
+      background:
+        radial-gradient(circle at 92% 18%, rgba(33, 214, 211, 0.24), transparent 16rem),
+        linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 65%, var(--navy-3) 100%);
+    }
+
+    .modal-head h2 {
+      margin: 0 0 4px;
+      font-size: 26px;
+      letter-spacing: -0.04em;
+    }
+
+    .modal-head .muted { color: #c8dbea; }
+
+    .edit-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      padding: 22px 24px 8px;
+    }
+
+    .edit-grid .wide { grid-column: 1 / -1; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 16px 24px 22px;
+      border-top: 1px solid var(--line);
+    }
+
     .badge {
       display: inline-block;
       padding: 4px 8px;
@@ -379,6 +442,7 @@
     @media (max-width: 980px) {
       .topbar, .filters { grid-template-columns: 1fr; }
       .user-admin { grid-template-columns: 1fr; }
+      .edit-grid { grid-template-columns: 1fr; }
       .topbar {
         align-items: flex-start;
         flex-direction: column;
@@ -570,6 +634,78 @@
     </section>
   </main>
 
+  <section id="record-edit-modal" class="modal-backdrop hidden" aria-hidden="true">
+    <form id="record-edit-form" class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h2 id="record-edit-title">Editar registro</h2>
+          <p class="muted">Actualice los datos y guarde los cambios en la base online.</p>
+        </div>
+        <button id="record-edit-close" class="btn secondary small" type="button">Cerrar</button>
+      </div>
+
+      <div class="edit-grid">
+        <div class="field">
+          <label for="editDriverName">Conductor</label>
+          <input id="editDriverName" name="driverName" required>
+        </div>
+        <div class="field">
+          <label for="editPlateNumber">Placa</label>
+          <input id="editPlateNumber" name="plateNumber" required>
+        </div>
+        <div class="field">
+          <label for="editEmployeeCode">Codigo funcionario</label>
+          <input id="editEmployeeCode" name="employeeCode" required>
+        </div>
+        <div class="field">
+          <label for="editEbap">EBAP</label>
+          <select id="editEbap" name="ebap" required>
+            <option>Norte</option>
+            <option>Sur</option>
+            <option>Este</option>
+            <option>Sudoeste</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="editInitialReading">Lectura inicial</label>
+          <input id="editInitialReading" name="initialReading" type="number" step="0.01" min="0" required>
+        </div>
+        <div class="field">
+          <label for="editFinalReading">Lectura final</label>
+          <input id="editFinalReading" name="finalReading" type="number" step="0.01" min="0" required>
+        </div>
+        <div class="field">
+          <label for="editLoadVolume">Volumen</label>
+          <input id="editLoadVolume" name="loadVolume" type="number" step="0.01" min="0" placeholder="Se calcula si queda vacio">
+        </div>
+        <div class="field">
+          <label for="editCompanyType">Tipo</label>
+          <select id="editCompanyType" name="companyType" required>
+            <option>Gobierno Nacional</option>
+            <option>Gobierno Departamental</option>
+            <option>Gobierno Municipal</option>
+            <option>Bomberos</option>
+            <option>Ayuda Comunitaria</option>
+            <option>Particular</option>
+          </select>
+        </div>
+        <div class="field wide">
+          <label for="editCompanyName">Empresa/Entidad</label>
+          <input id="editCompanyName" name="companyName" required>
+        </div>
+        <div class="field wide">
+          <label for="editCharacteristics">Observaciones</label>
+          <textarea id="editCharacteristics" name="characteristics"></textarea>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="record-edit-cancel" class="btn secondary" type="button">Cancelar</button>
+        <button id="record-edit-save" class="btn" type="submit">Guardar cambios</button>
+      </div>
+    </form>
+  </section>
+
   <script>
     const TOKEN_KEY = 'cisternas_admin_token';
     const USER_KEY = 'cisternas_admin_user';
@@ -594,6 +730,13 @@
     const importButton = document.getElementById('import-button');
     const importFile = document.getElementById('import-file');
     const logoutButton = document.getElementById('logout-button');
+    const recordEditModal = document.getElementById('record-edit-modal');
+    const recordEditForm = document.getElementById('record-edit-form');
+    const recordEditTitle = document.getElementById('record-edit-title');
+    const recordEditClose = document.getElementById('record-edit-close');
+    const recordEditCancel = document.getElementById('record-edit-cancel');
+    const recordEditSave = document.getElementById('record-edit-save');
+    let editingRecordId = null;
 
     function token() {
       return sessionStorage.getItem(TOKEN_KEY) || '';
@@ -673,81 +816,6 @@
       return td;
     }
 
-    function promptText(label, current, required = true) {
-      while (true) {
-        const value = window.prompt(label, current ?? '');
-        if (value === null) return null;
-        const clean = value.trim();
-        if (!required || clean) return clean;
-        alert(`${label} es obligatorio.`);
-      }
-    }
-
-    function promptNumber(label, current) {
-      while (true) {
-        const value = window.prompt(label, current ?? '');
-        if (value === null) return { ok: false };
-        const parsed = Number(value.trim().replace(',', '.'));
-        if (Number.isFinite(parsed)) return { ok: true, value: parsed };
-        alert(`${label} debe ser numerico.`);
-      }
-    }
-
-    function promptMaybeNumber(label, current) {
-      while (true) {
-        const value = window.prompt(label, current ?? '');
-        if (value === null) return { ok: false };
-        const clean = value.trim();
-        if (!clean) return { ok: true, value: null };
-        const parsed = Number(clean.replace(',', '.'));
-        if (Number.isFinite(parsed)) return { ok: true, value: parsed };
-        alert(`${label} debe ser numerico.`);
-      }
-    }
-
-    function editedRecordPayload(record) {
-      const driverName = promptText('Conductor', record.driverName);
-      if (driverName === null) return null;
-      const plateNumber = promptText('Placa', record.plateNumber);
-      if (plateNumber === null) return null;
-      const employeeCode = promptText('Codigo funcionario', record.employeeCode);
-      if (employeeCode === null) return null;
-      const ebap = promptText('EBAP', record.ebap);
-      if (ebap === null) return null;
-      const initial = promptNumber('Lectura inicial', record.initialReading);
-      if (!initial.ok) return null;
-      const final = promptNumber('Lectura final', record.finalReading);
-      if (!final.ok) return null;
-      if (final.value <= initial.value) {
-        alert('La lectura final debe ser mayor que la lectura inicial.');
-        return null;
-      }
-      const volume = promptMaybeNumber('Volumen (deje vacio para calcular automaticamente)', record.loadVolume);
-      if (!volume.ok) return null;
-      const companyType = promptText(
-        'Tipo de empresa (Gobierno Nacional, Gobierno Departamental, Gobierno Municipal, Bomberos, Ayuda Comunitaria, Particular)',
-        record.companyType
-      );
-      if (companyType === null) return null;
-      const companyName = promptText('Empresa/Entidad', record.companyName);
-      if (companyName === null) return null;
-      const characteristics = promptText('Observaciones', record.characteristics || '', false);
-      if (characteristics === null) return null;
-
-      return {
-        driverName,
-        plateNumber,
-        employeeCode,
-        ebap,
-        initialReading: initial.value,
-        finalReading: final.value,
-        loadVolume: volume.value ?? Math.round((final.value - initial.value) * 100) / 100,
-        companyType,
-        companyName,
-        characteristics,
-      };
-    }
-
     function renderRecords(records, totalVolume) {
       recordsBody.textContent = '';
       emptyState.classList.toggle('hidden', records.length > 0);
@@ -823,21 +891,130 @@
       }
     }
 
-    async function editRecord(record) {
-      const payload = editedRecordPayload(record);
-      if (!payload) return;
+    function editField(name) {
+      return recordEditForm.elements[name];
+    }
+
+    function setSelectValue(field, value) {
+      const cleanValue = value ?? '';
+      const hasOption = Array.from(field.options).some((option) => option.value === cleanValue);
+      if (cleanValue && !hasOption) {
+        field.appendChild(new Option(cleanValue, cleanValue));
+      }
+      field.value = cleanValue;
+    }
+
+    function setEditField(name, value) {
+      const field = editField(name);
+      if (field.tagName === 'SELECT') {
+        setSelectValue(field, value);
+        return;
+      }
+      field.value = value ?? '';
+    }
+
+    function openEditModal(record) {
+      editingRecordId = record.id;
+      recordEditTitle.textContent = `Editar registro #${record.id}`;
+      setEditField('driverName', record.driverName);
+      setEditField('plateNumber', record.plateNumber);
+      setEditField('employeeCode', record.employeeCode);
+      setEditField('ebap', record.ebap);
+      setEditField('initialReading', record.initialReading);
+      setEditField('finalReading', record.finalReading);
+      setEditField('loadVolume', record.loadVolume);
+      setEditField('companyType', record.companyType);
+      setEditField('companyName', record.companyName);
+      setEditField('characteristics', record.characteristics || '');
+      recordEditModal.classList.remove('hidden');
+      recordEditModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      editField('driverName').focus();
+    }
+
+    function closeEditModal() {
+      editingRecordId = null;
+      recordEditForm.reset();
+      recordEditModal.classList.add('hidden');
+      recordEditModal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function requiredText(name, label) {
+      const value = String(editField(name).value || '').trim();
+      if (!value) throw new Error(`${label} es obligatorio.`);
+      return value;
+    }
+
+    function numericValue(name, label, required = true) {
+      const raw = String(editField(name).value || '').trim().replace(',', '.');
+      if (!raw && !required) return null;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) throw new Error(`${label} debe ser numerico.`);
+      if (value < 0) throw new Error(`${label} no puede ser negativo.`);
+      return value;
+    }
+
+    function editedRecordPayload() {
+      const initialReading = numericValue('initialReading', 'Lectura inicial');
+      const finalReading = numericValue('finalReading', 'Lectura final');
+      if (finalReading <= initialReading) {
+        throw new Error('La lectura final debe ser mayor que la lectura inicial.');
+      }
+
+      const enteredVolume = numericValue('loadVolume', 'Volumen', false);
+      const loadVolume = enteredVolume ?? Math.round((finalReading - initialReading) * 100) / 100;
+      if (loadVolume <= 0) throw new Error('El volumen debe ser mayor a cero.');
+
+      return {
+        driverName: requiredText('driverName', 'Conductor'),
+        plateNumber: requiredText('plateNumber', 'Placa'),
+        employeeCode: requiredText('employeeCode', 'Codigo funcionario'),
+        ebap: requiredText('ebap', 'EBAP'),
+        initialReading,
+        finalReading,
+        loadVolume,
+        companyType: requiredText('companyType', 'Tipo'),
+        companyName: requiredText('companyName', 'Empresa/Entidad'),
+        characteristics: String(editField('characteristics').value || '').trim(),
+      };
+    }
+
+    function editRecord(record) {
+      openEditModal(record);
+    }
+
+    recordEditForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!editingRecordId) return;
 
       try {
-        await api(`/api/records/${record.id}`, {
+        recordEditSave.disabled = true;
+        const payload = editedRecordPayload();
+        await api(`/api/records/${editingRecordId}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
+        closeEditModal();
         await loadRecords();
         alert('Registro actualizado correctamente.');
       } catch (error) {
         alert(error.message);
+      } finally {
+        recordEditSave.disabled = false;
       }
-    }
+    });
+
+    recordEditCancel.addEventListener('click', closeEditModal);
+    recordEditClose.addEventListener('click', closeEditModal);
+    recordEditModal.addEventListener('click', (event) => {
+      if (event.target === recordEditModal) closeEditModal();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !recordEditModal.classList.contains('hidden')) {
+        closeEditModal();
+      }
+    });
 
     async function deleteRecord(record) {
       if (!confirm(`Desea eliminar el registro #${record.id} de ${record.driverName}? Esta accion no se puede deshacer.`)) {
