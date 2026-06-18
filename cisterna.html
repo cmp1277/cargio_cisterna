@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard de Análisis de Cargas de Agua</title>
+    <script src="https://cdn.tailwindcss.com" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
+
+    <style>
+        :root { --header-height: 70px; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f0f7ff;
+            background-image: linear-gradient(170deg, #eef6ff 0%, #dbeafe 100%);
+            padding-top: var(--header-height);
+        }
+        .header {
+            height: var(--header-height);
+            transition: height 0.3s ease, box-shadow 0.3s ease;
+        }
+        .header.scrolled {
+            --header-height: 60px;
+            box-shadow: 0 4px 12px -1px rgba(0, 0, 0, 0.1);
+        }
+        .header-logo { height: 45px; transition: height 0.3s ease; }
+        .header.scrolled .header-logo { height: 40px; }
+        .kpi-card {
+            background: linear-gradient(145deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .kpi-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px -5px rgba(0,0,0,0.1); }
+        .animated-entry { animation: fadeIn 0.6s ease-out forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .action-btn { background: none; border: none; cursor: pointer; transition: transform 0.2s, color 0.2s; font-size: 1.1rem; }
+        .btn-delete { color: #ef4444; }
+        .btn-delete:hover { transform: scale(1.25); color: #b91c1c; }
+        .btn-info { color: #3b82f6; }
+        .btn-info:hover { transform: scale(1.25); color: #1d4ed8; }
+        .interactive-chart { cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <header id="app-header" class="header bg-white/80 backdrop-blur-sm fixed top-0 left-0 right-0 z-50 flex items-center">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <img src="logo.png" alt="SAGUAPAC Logo" class="header-logo">
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 hidden sm:block">REGISTRO DE CARGIO DE CISTERNAS EN EBAP</h1>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <section class="bg-white/70 backdrop-blur-sm rounded-lg shadow-md p-6 mb-8 animated-entry">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Registrar Nueva Carga</h2>
+            <form id="water-load-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div><label for="driver-name" class="block text-sm font-medium text-gray-700">Conductor</label><input type="text" id="driver-name" required class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+                <div><label for="plate-number" class="block text-sm font-medium text-gray-700">Placa</label><input type="text" id="plate-number" required class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+                <div><label for="initial-reading" class="block text-sm font-medium text-gray-700">Lectura Inicial (m³)</label><input type="number" id="initial-reading" min="0" step="0.01" required class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+                <div><label for="final-reading" class="block text-sm font-medium text-gray-700">Lectura Final (m³)</label><input type="number" id="final-reading" min="0" step="0.01" required class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+                <div><label for="calculated-volume" class="block text-sm font-medium text-gray-700">Volumen Entregado</label><input type="text" id="calculated-volume" class="mt-1 w-full px-3 py-2 border bg-gray-100 border-gray-300 rounded-md shadow-sm font-bold" readonly></div>
+                <div><label for="company-type" class="block text-sm font-medium text-gray-700">Tipo de Empresa</label><select id="company-type" required class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="" disabled selected>Seleccione</option><option value="Gobierno Nacional">Gobierno Nacional</option><option value="Gobierno Departamental">Gobierno Departamental</option><option value="Gobierno Municipal">Gobierno Municipal</option><option value="Bomberos">Bomberos</option><option value="Ayuda Comunitaria">Ayuda Comunitaria</option><option value="Particular">Particular</option></select></div>
+                <div><label for="company-name" class="block text-sm font-medium text-gray-700">Nombre Empresa/Entidad</label><input type="text" id="company-name" required class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ej: Constructora Andina"></div>
+                <div><label for="employee-code" class="block text-sm font-medium text-gray-700">Código de Funcionario</label><input type="text" id="employee-code" required class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ej: CMONTOYA"></div>
+                <div class="lg:col-span-4"><label for="characteristics" class="block text-sm font-medium text-gray-700">Características / Observaciones</label><textarea id="characteristics" rows="2" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Detalles de la cisterna, estado, etc..."></textarea></div>
+                <div class="lg:col-span-4 flex justify-end items-end">
+                    <button type="submit" class="w-full sm:w-auto flex items-center justify-center px-6 py-2 bg-blue-600 text-white font-bold rounded-md shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform hover:scale-105 transition duration-300">
+                        <span>Registrar Carga</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section id="results-section" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 animated-entry">
+                <div class="kpi-card p-6 rounded-lg shadow-md text-center"><h3 class="text-sm font-medium text-gray-600 uppercase">Total Registros</h3><p id="kpi-total-records" class="text-4xl font-bold text-blue-600 mt-2">0</p></div>
+                <div class="kpi-card p-6 rounded-lg shadow-md text-center"><h3 class="text-sm font-medium text-gray-600 uppercase">Volumen Total (m³)</h3><p id="kpi-total-volume" class="text-4xl font-bold text-blue-600 mt-2">0</p></div>
+            </div>
+            <div class="bg-white/70 backdrop-blur-sm rounded-lg shadow-md">
+                <div class="flex flex-col sm:flex-row justify-between items-center p-4 border-b border-gray-200 gap-4">
+                    <h2 class="text-xl font-bold text-gray-800">Historial y Análisis</h2>
+                    <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <input type="search" id="search-input" placeholder="Buscar..." class="w-full sm:w-auto px-4 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button id="export-btn" class="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-green-600 text-white font-bold rounded-md shadow-lg hover:bg-green-700 transform hover:scale-105 transition"><i class="fas fa-file-excel mr-2"></i><span>Exportar</span></button>
+                        <button id="clear-data-btn" class="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-red-600 text-white font-bold rounded-md shadow-lg hover:bg-red-700 transform hover:scale-105 transition"><i class="fas fa-trash-alt mr-2"></i><span>Borrar Todo</span></button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto p-2 md:p-4">
+                    <table class="min-w-full"><thead class="bg-gray-50/50"><tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="timestamp">Fecha<i class="fas fa-sort ml-2"></i></th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="driverName">Conductor<i class="fas fa-sort ml-2"></i></th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="companyName">Empresa<i class="fas fa-sort ml-2"></i></th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="loadVolume">Volumen<i class="fas fa-sort ml-2"></i></th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                    </tr></thead><tbody id="table-body" class="bg-white divide-y divide-gray-200"></tbody></table>
+                </div>
+                <div class="p-4 border-t border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4">Volumen por Tipo de Empresa (Clic para Filtrar)</h3>
+                    <div id="chart-container" style="height:350px; position:relative;"><canvas id="companyVolumeChart" class="interactive-chart"></canvas></div>
+                </div>
+            </div>
+        </section>
+        <div id="initial-state" class="text-center p-8 bg-white/50 rounded-lg shadow-md">
+            <div class="bg-blue-100 rounded-full p-4 mb-4 inline-block"><i class="fas fa-tint text-blue-500 text-4xl"></i></div>
+            <h3 class="text-lg font-medium text-gray-900">Sin Registros</h3><p class="text-sm text-gray-500">Añada una carga para activar el dashboard.</p>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const S = {
+                form: document.getElementById('water-load-form'),
+                initialReading: document.getElementById('initial-reading'),
+                finalReading: document.getElementById('final-reading'),
+                calculatedVolume: document.getElementById('calculated-volume'),
+                tableBody: document.getElementById('table-body'),
+                searchInput: document.getElementById('search-input'),
+                resultsSection: document.getElementById('results-section'),
+                initialStateDiv: document.getElementById('initial-state'),
+                chartCanvas: document.getElementById('companyVolumeChart'),
+                kpiRecords: document.getElementById('kpi-total-records'),
+                kpiVolume: document.getElementById('kpi-total-volume'),
+                header: document.getElementById('app-header'),
+            };
+
+            let records = [];
+            let sortState = { key: 'timestamp', direction: 'desc' };
+            let chartInstance = null;
+            
+            const loadRecords = () => records = JSON.parse(localStorage.getItem('waterLoads')) || [];
+            const saveRecords = () => localStorage.setItem('waterLoads', JSON.stringify(records));
+
+            const animateValue = (el, start, end, duration) => {
+                let startTimestamp = null;
+                const step = (timestamp) => {
+                    if (!startTimestamp) startTimestamp = timestamp;
+                    const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                    el.innerText = Math.floor(progress * (end - start) + start).toLocaleString('es-BO');
+                    if (progress < 1) window.requestAnimationFrame(step);
+                };
+                window.requestAnimationFrame(step);
+            };
+
+            const updateCalculatedVolume = () => {
+                const initial = parseFloat(S.initialReading.value) || 0;
+                const final = parseFloat(S.finalReading.value) || 0;
+                S.calculatedVolume.classList.remove('text-red-500');
+                if (final < initial) {
+                    S.calculatedVolume.value = 'Error';
+                    S.calculatedVolume.classList.add('text-red-500');
+                    return;
+                }
+                S.calculatedVolume.value = (final - initial).toFixed(2) + ' m³';
+            };
+
+            const render = (data) => {
+                const hasRecords = data.length > 0;
+                S.initialStateDiv.classList.toggle('hidden', hasRecords);
+                S.resultsSection.classList.toggle('hidden', !hasRecords);
+
+                if (!hasRecords) {
+                    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+                    return;
+                }
+                
+                S.resultsSection.classList.add('animated-entry');
+                
+                const totalVolume = data.reduce((sum, r) => sum + r.loadVolume, 0);
+                animateValue(S.kpiRecords, 0, data.length, 800);
+                animateValue(S.kpiVolume, 0, totalVolume, 800);
+                
+                S.tableBody.innerHTML = '';
+                data.forEach(r => {
+                    S.tableBody.insertAdjacentHTML('beforeend', `
+                        <tr class="hover:bg-gray-100/50 animated-entry">
+                            <td class="px-4 py-3 text-sm text-gray-600">${new Date(r.timestamp).toLocaleString('es-BO', {dateStyle: 'short', timeStyle: 'short'})}</td>
+                            <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.driverName}</td>
+                            <td class="px-4 py-3 text-sm text-gray-800">${r.companyName}</td>
+                            <td class="px-4 py-3 text-sm font-bold text-blue-600">${r.loadVolume.toFixed(2)} m³</td>
+                            <td class="px-4 py-3 text-center space-x-4">
+                                <button class="action-btn btn-info" data-id="${r.id}" title="Ver Detalles"><i class="fas fa-info-circle"></i></button>
+                                <button class="action-btn btn-delete" data-id="${r.id}" title="Eliminar"><i class="fas fa-trash-alt"></i></button>
+                            </td>
+                        </tr>`);
+                });
+
+                renderChart(data);
+            };
+
+            const renderChart = (data) => {
+                const companyData = data.reduce((acc, r) => { acc[r.companyType] = (acc[r.companyType] || 0) + r.loadVolume; return acc; }, {});
+                const colors = ['#36A2EB', '#FF6384', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
+                if (chartInstance) chartInstance.destroy();
+                chartInstance = new Chart(S.chartCanvas.getContext('2d'), {
+                    type: 'bar',
+                    data: { labels: Object.keys(companyData), datasets: [{ data: Object.values(companyData), backgroundColor: colors, borderWidth: 0 }] },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+                });
+            };
+
+            const applyFiltersAndSort = () => {
+                let data = [...records];
+                const term = S.searchInput.value.toLowerCase();
+                if (term) data = data.filter(r => Object.values(r).some(val => String(val).toLowerCase().includes(term)));
+                data.sort((a, b) => {
+                    const valA = a[sortState.key] || '';
+                    const valB = b[sortState.key] || '';
+                    const comparison = valA > valB ? 1 : (valA < valB ? -1 : 0);
+                    return sortState.direction === 'asc' ? comparison : -comparison;
+                });
+                render(data);
+            };
+
+            // ---- Lógica de Eventos ----
+            const handleFormSubmit = (e) => {
+                e.preventDefault();
+                const initial = parseFloat(S.initialReading.value);
+                const final = parseFloat(S.finalReading.value);
+
+                if (isNaN(initial) || isNaN(final) || final < initial) {
+                    Swal.fire('Error de Lectura', 'Verifique que las lecturas sean números válidos y que la final sea mayor o igual a la inicial.', 'error');
+                    return;
+                }
+
+                records.unshift({
+                    id: Date.now(), timestamp: new Date().toISOString(),
+                    driverName: S.form.elements['driver-name'].value.trim(),
+                    plateNumber: S.form.elements['plate-number'].value.trim(),
+                    employeeCode: S.form.elements['employee-code'].value.trim(),
+                    initialReading: initial, finalReading: final,
+                    loadVolume: final - initial,
+                    companyType: S.form.elements['company-type'].value,
+                    companyName: S.form.elements['company-name'].value.trim(),
+                    characteristics: S.form.elements['characteristics'].value.trim()
+                });
+                saveRecords();
+                applyFiltersAndSort();
+                S.form.reset();
+                S.calculatedVolume.value = '';
+                Swal.fire({ icon: 'success', title: '¡Registro Guardado!', timer: 1500, showConfirmButton: false });
+            };
+
+            const handleActionClick = (e) => {
+                const target = e.target.closest('button');
+                if (!target) return;
+
+                const actionId = target.id;
+                const actionClass = target.classList;
+
+                if (actionId === 'export-btn') {
+                    if (records.length === 0) return;
+                    const headers = ["ID", "Timestamp", "Conductor", "Placa", "Cod. Funcionario", "Lectura Inicial", "Lectura Final", "Volumen", "Tipo Empresa", "Nombre Empresa", "Características"];
+                    const rows = records.map(r => [r.id, r.timestamp, r.driverName, r.plateNumber, r.employeeCode, r.initialReading, r.finalReading, r.loadVolume, r.companyType, r.companyName, `"${(r.characteristics || '').replace(/"/g, '""')}"`].join(','));
+                    const csv = "\uFEFF" + [headers.join(','), ...rows].join('\n');
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+                    link.setAttribute("download", `SAGUAPAC_Cargas_${new Date().toISOString().slice(0, 10)}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } else if (actionId === 'clear-data-btn') {
+                    if (records.length === 0) return;
+                    Swal.fire({ title: '¿Confirmar Borrado Total?', text: "Se eliminarán todos los registros.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Sí, borrar todo', cancelButtonText: 'Cancelar' })
+                        .then(r => { if (r.isConfirmed) { records = []; saveRecords(); applyFiltersAndSort(); } });
+                } else if (actionClass.contains('btn-delete')) {
+                    const id = parseInt(target.dataset.id);
+                    Swal.fire({ title: '¿Eliminar este registro?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Sí, eliminar' })
+                        .then(r => { if (r.isConfirmed) { records = records.filter(rec => rec.id !== id); saveRecords(); applyFiltersAndSort(); } });
+                } else if (actionClass.contains('btn-info')) {
+                    const id = parseInt(target.dataset.id);
+                    const record = records.find(r => r.id === id);
+                    Swal.fire({
+                        title: '<strong>Detalles del Registro</strong>',
+                        html: `<div class="text-left p-2">
+                                <p class="mb-2"><strong>Registrado por (Cód):</strong> ${record.employeeCode || 'No especificado'}</p>
+                                <p class="mb-2"><strong>Placa:</strong> ${record.plateNumber}</p>
+                                <p><strong>Observaciones:</strong></p>
+                                <p class="mt-1 p-2 bg-gray-100 rounded text-sm">${record.characteristics || 'Sin observaciones.'}</p>
+                               </div>`,
+                        icon: 'info'
+                    });
+                }
+            };
+
+            // ---- INICIALIZACIÓN DE EVENTOS ----
+            S.initialReading.addEventListener('input', updateCalculatedVolume);
+            S.finalReading.addEventListener('input', updateCalculatedVolume);
+            S.searchInput.addEventListener('input', applyFiltersAndSort);
+            S.form.addEventListener('submit', handleFormSubmit);
+            document.getElementById('results-section').addEventListener('click', handleActionClick);
+
+            document.querySelector('thead').addEventListener('click', (e) => {
+                const header = e.target.closest('[data-sort]');
+                if (!header) return;
+                const key = header.dataset.sort;
+                sortState.direction = (sortState.key === key && sortState.direction === 'asc') ? 'desc' : 'asc';
+                sortState.key = key;
+                applyFiltersAndSort();
+            });
+            
+            S.chartCanvas.onclick = (e) => {
+                if (!chartInstance) return;
+                const activePoints = chartInstance.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+                if (activePoints.length) {
+                    S.searchInput.value = chartInstance.data.labels[activePoints[0].index];
+                    applyFiltersAndSort();
+                    S.resultsSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            };
+            window.addEventListener('scroll', () => S.header.classList.toggle('scrolled', window.scrollY > 20));
+
+            // ---- ARRANQUE INICIAL ----
+            loadRecords();
+            applyFiltersAndSort();
+        });
+    </script>
+</body>
+</html>
