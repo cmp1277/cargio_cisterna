@@ -234,6 +234,7 @@
     }
 
     .topbar {
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -247,6 +248,32 @@
       border: 0;
       border-radius: 20px;
       box-shadow: 0 18px 44px rgba(6, 40, 61, 0.18);
+      overflow: hidden;
+    }
+
+    .topbar::before,
+    .topbar::after {
+      content: "";
+      position: absolute;
+      inset: -45% 0 0;
+      pointer-events: none;
+      background-image:
+        repeating-linear-gradient(108deg, rgba(255,255,255,0.0) 0 20px, rgba(255,255,255,0.20) 21px 22px, rgba(255,255,255,0.0) 23px 48px);
+      animation: scpeRain 1.35s linear infinite;
+      opacity: 0.34;
+    }
+
+    .topbar::after {
+      inset: -60% 0 0;
+      background-image:
+        repeating-linear-gradient(108deg, rgba(33,214,211,0.0) 0 26px, rgba(33,214,211,0.30) 27px 28px, rgba(33,214,211,0.0) 29px 64px);
+      animation-duration: 2.05s;
+      opacity: 0.28;
+    }
+
+    .topbar > * {
+      position: relative;
+      z-index: 1;
     }
 
     .topbar h1 { color: white; }
@@ -298,7 +325,9 @@
 
     @media (prefers-reduced-motion: reduce) {
       .login-card .brand::before,
-      .login-card .brand::after {
+      .login-card .brand::after,
+      .topbar::before,
+      .topbar::after {
         animation: none;
       }
     }
