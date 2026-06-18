@@ -10,7 +10,7 @@ from functools import wraps
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, redirect, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
@@ -18,6 +18,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 
 BASE_DIR = Path(__file__).resolve().parent
+MOBILE_APP_DIR = BASE_DIR / "mobile_app"
 load_dotenv(BASE_DIR / ".env")
 
 db = SQLAlchemy()
@@ -396,6 +397,15 @@ def register_routes(app: Flask) -> None:
     @app.get("/admin")
     def admin_panel():
         return render_template("admin.html")
+
+    @app.get("/app")
+    @app.get("/app/")
+    def mobile_web_app():
+        return send_from_directory(MOBILE_APP_DIR, "index.html")
+
+    @app.get("/app/<path:filename>")
+    def mobile_web_asset(filename: str):
+        return send_from_directory(MOBILE_APP_DIR, filename)
 
     @app.get("/api/health")
     def health():

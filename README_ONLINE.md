@@ -141,4 +141,10 @@ El panel administrador sera:
 https://cisternas-api.onrender.com/admin
 ```
 
+La app web para registrar desde navegador sera:
+
+```text
+https://cisternas-api.onrender.com/app
+```
+
 Despues cambia esa URL en la app movil y recompila el APK.
