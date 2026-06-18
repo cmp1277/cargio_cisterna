@@ -34,6 +34,8 @@ Usuarios iniciales:
 
 Desde el panel administrador puedes crear mas usuarios. Usa rol `Administrador` para acceso total al panel y rol `Cliente / Usuario` para registrar cargas desde `/app` o desde el APK.
 
+Tambien puedes desactivar usuarios que ya no se utilicen. La desactivacion bloquea el login, pero conserva los registros historicos asociados a ese usuario.
+
 ## Configurar la app movil
 
 Edita:

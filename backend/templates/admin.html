@@ -413,6 +413,7 @@
               <th>Rol</th>
               <th>Estado</th>
               <th>Creado</th>
+              <th>Accion</th>
             </tr>
           </thead>
           <tbody id="users-body"></tbody>
@@ -598,14 +599,25 @@
     function renderUsers(users) {
       usersBody.textContent = '';
       usersEmptyState.classList.toggle('hidden', users.length > 0);
+      const current = JSON.parse(sessionStorage.getItem(USER_KEY) || '{}');
 
       for (const user of users) {
         const tr = document.createElement('tr');
+        const action = document.createElement('td');
+        const button = document.createElement('button');
+        button.className = user.active ? 'btn danger' : 'btn secondary';
+        button.type = 'button';
+        button.textContent = user.active ? 'Desactivar' : 'Reactivar';
+        button.disabled = user.username === current.username;
+        button.addEventListener('click', () => toggleUserActive(user));
+        action.appendChild(button);
+
         tr.append(
           cell(user.username),
           cell(user.role === 'admin' ? 'Administrador' : 'Cliente / Usuario'),
           cell(user.active ? 'Activo' : 'Inactivo'),
-          cell(formatDate(user.createdAt))
+          cell(formatDate(user.createdAt)),
+          action
         );
         usersBody.appendChild(tr);
       }
@@ -614,6 +626,22 @@
     async function loadUsers() {
       const data = await api('/api/users');
       renderUsers(data.users || []);
+    }
+
+    async function toggleUserActive(user) {
+      const nextActive = !user.active;
+      const actionText = nextActive ? 'reactivar' : 'desactivar';
+      if (!confirm(`Desea ${actionText} el usuario "${user.username}"?`)) return;
+
+      try {
+        await api(`/api/users/${encodeURIComponent(user.username)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ active: nextActive }),
+        });
+        await loadUsers();
+      } catch (error) {
+        alert(error.message);
+      }
     }
 
     async function loadRecords() {

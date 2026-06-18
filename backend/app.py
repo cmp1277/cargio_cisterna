@@ -552,6 +552,33 @@ def register_routes(app: Flask) -> None:
         db.session.commit()
         return api_success("Usuario creado", user=user_to_dict(user))
 
+    @app.patch("/api/users/<username>")
+    @require_auth(admin=True)
+    def api_update_user(username: str):
+        data = request.get_json(silent=True) or {}
+        target_username = username.strip().lower()
+        user = User.query.get(target_username)
+        if not user:
+            return api_error("Usuario no encontrado.", 404)
+
+        current_user = request.current_user
+        if user.username == current_user.username and data.get("active") is False:
+            return api_error("No puede desactivar su propio usuario administrador.")
+
+        if "active" in data:
+            user.active = bool(data["active"])
+
+        if "role" in data:
+            role = clean_text(data, "role")
+            if role not in {"admin", "user"}:
+                return api_error("Rol no valido.")
+            if user.username == current_user.username and role != "admin":
+                return api_error("No puede quitarse su propio rol administrador.")
+            user.role = role
+
+        db.session.commit()
+        return api_success("Usuario actualizado", user=user_to_dict(user))
+
 
 app = create_app()
 
