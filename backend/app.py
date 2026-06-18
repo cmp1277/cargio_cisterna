@@ -274,6 +274,15 @@ def record_to_dict(record: WaterRecord) -> dict:
     }
 
 
+def user_to_dict(user: User) -> dict:
+    return {
+        "username": user.username,
+        "role": user.role,
+        "active": user.active,
+        "createdAt": as_utc(user.created_at).isoformat(),
+    }
+
+
 def login_action(data: dict):
     username = clean_text(data, "username")
     password = str(data.get("password", ""))
@@ -506,6 +515,42 @@ def register_routes(app: Flask) -> None:
             mimetype="text/csv; charset=utf-8",
             headers={"Content-Disposition": "attachment; filename=registros_cisternas.csv"},
         )
+
+    @app.get("/api/users")
+    @require_auth(admin=True)
+    def api_users():
+        users = User.query.order_by(User.username.asc()).all()
+        return api_success("Usuarios cargados", users=[user_to_dict(user) for user in users])
+
+    @app.post("/api/users")
+    @require_auth(admin=True)
+    def api_create_user():
+        data = request.get_json(silent=True) or {}
+        username = clean_text(data, "username").lower()
+        password = str(data.get("password", ""))
+        role = clean_text(data, "role") or "user"
+
+        if not username or not password:
+            return api_error("Usuario y contrasena requeridos.")
+        if len(username) < 3:
+            return api_error("El usuario debe tener al menos 3 caracteres.")
+        if len(password) < 6:
+            return api_error("La contrasena debe tener al menos 6 caracteres.")
+        if role not in {"admin", "user"}:
+            return api_error("Rol no valido.")
+        if User.query.get(username):
+            return api_error("Ese usuario ya existe.")
+
+        user = User(
+            username=username,
+            password_hash=generate_password_hash(password),
+            role=role,
+            active=True,
+            created_at=utcnow(),
+        )
+        db.session.add(user)
+        db.session.commit()
+        return api_success("Usuario creado", user=user_to_dict(user))
 
 
 app = create_app()

@@ -32,6 +32,8 @@ Usuarios iniciales:
 - `usuario` / `usuario123`
 - `cliente` / `cliente123`
 
+Desde el panel administrador puedes crear mas usuarios. Usa rol `Administrador` para acceso total al panel y rol `Cliente / Usuario` para registrar cargas desde `/app` o desde el APK.
+
 ## Configurar la app movil
 
 Edita:
