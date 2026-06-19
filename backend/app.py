@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import json
 import os
 import re
 import secrets
@@ -29,6 +30,7 @@ MOBILE_APP_DIR = BASE_DIR / "mobile_app"
 load_dotenv(BASE_DIR / ".env")
 
 db = SQLAlchemy()
+LOGIN_ATTEMPTS: dict[str, list[datetime]] = {}
 
 RECORD_EXPORT_HEADERS = [
     "ID",
@@ -133,6 +135,20 @@ class WaterRecord(db.Model):
     user = db.relationship("User")
 
 
+class AuditLog(db.Model):
+    __tablename__ = "audit_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    actor = db.Column(db.String(80), nullable=True, index=True)
+    action = db.Column(db.String(80), nullable=False, index=True)
+    target_type = db.Column(db.String(80), nullable=True, index=True)
+    target_id = db.Column(db.String(120), nullable=True, index=True)
+    ip_address = db.Column(db.String(80), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
+    details = db.Column(db.Text, nullable=True)
+
+
 def create_app(test_config: dict | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=True)
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
@@ -152,6 +168,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "*").split(",") if item.strip()]
     CORS(app, resources={r"/api/*": {"origins": origins or "*"}})
 
+    register_security_headers(app)
     register_routes(app)
 
     with app.app_context():
@@ -244,6 +261,110 @@ def api_success(message: str, **extra):
 
 def api_error(message: str, status: int = 400):
     return jsonify({"success": False, "message": message}), status
+
+
+def client_ip() -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+    return request.remote_addr or ""
+
+
+def audit_log_to_dict(log: AuditLog) -> dict:
+    details = {}
+    if log.details:
+        try:
+            details = json.loads(log.details)
+        except json.JSONDecodeError:
+            details = {"raw": log.details}
+    return {
+        "id": log.id,
+        "timestamp": to_timestamp_ms(log.timestamp),
+        "timestampIso": as_utc(log.timestamp).isoformat(),
+        "actor": log.actor or "",
+        "action": log.action,
+        "targetType": log.target_type or "",
+        "targetId": log.target_id or "",
+        "ipAddress": log.ip_address or "",
+        "userAgent": log.user_agent or "",
+        "details": details,
+    }
+
+
+def add_audit_log(
+    action: str,
+    target_type: str = "",
+    target_id: str | int = "",
+    details: dict | None = None,
+    actor: str | None = None,
+    commit: bool = False,
+) -> None:
+    current_user = getattr(request, "current_user", None)
+    payload = json.dumps(details or {}, ensure_ascii=False)
+    db.session.add(
+        AuditLog(
+            actor=actor or (current_user.username if current_user else None),
+            action=action,
+            target_type=target_type,
+            target_id=str(target_id) if target_id not in (None, "") else "",
+            ip_address=client_ip(),
+            user_agent=(request.headers.get("User-Agent", "")[:255] or ""),
+            details=payload,
+        )
+    )
+    if commit:
+        db.session.commit()
+
+
+def login_rate_limit_config() -> tuple[int, int]:
+    max_attempts = int(os.getenv("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", "8"))
+    window_minutes = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "15"))
+    return max_attempts, window_minutes
+
+
+def login_rate_limit_key(username: str) -> str:
+    return f"{client_ip()}:{username.lower()}"
+
+
+def login_is_limited(username: str) -> bool:
+    max_attempts, window_minutes = login_rate_limit_config()
+    key = login_rate_limit_key(username)
+    cutoff = utcnow() - timedelta(minutes=window_minutes)
+    attempts = [item for item in LOGIN_ATTEMPTS.get(key, []) if as_utc(item) >= cutoff]
+    LOGIN_ATTEMPTS[key] = attempts
+    return len(attempts) >= max_attempts
+
+
+def register_failed_login(username: str) -> None:
+    key = login_rate_limit_key(username)
+    LOGIN_ATTEMPTS.setdefault(key, []).append(utcnow())
+
+
+def clear_failed_logins(username: str) -> None:
+    LOGIN_ATTEMPTS.pop(login_rate_limit_key(username), None)
+
+
+def register_security_headers(app: Flask) -> None:
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' https://cisternas-api-wqac.onrender.com; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'",
+        )
+        if request.is_secure or request.headers.get("X-Forwarded-Proto", "").lower() == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
 
 
 def require_auth(admin: bool = False):
@@ -552,11 +673,33 @@ def login_action(data: dict):
     if not username or not password:
         return api_error("Usuario y contrasena requeridos.")
 
+    if login_is_limited(username):
+        add_audit_log(
+            "login_rate_limited",
+            "user",
+            username,
+            {"reason": "too_many_failed_attempts"},
+            actor=username,
+            commit=True,
+        )
+        return api_error("Demasiados intentos fallidos. Intente nuevamente mas tarde.", 429)
+
     user = User.query.get(username)
     if not user or not user.active or not check_password_hash(user.password_hash, password):
+        register_failed_login(username)
+        add_audit_log(
+            "login_failed",
+            "user",
+            username,
+            {"reason": "invalid_credentials"},
+            actor=username,
+            commit=True,
+        )
         return api_error("Credenciales incorrectas.", 401)
 
+    clear_failed_logins(username)
     token = issue_token(user.username, current_session_duration())
+    add_audit_log("login_success", "user", user.username, actor=user.username, commit=True)
     return api_success(
         "Login exitoso",
         token=token,
@@ -587,6 +730,14 @@ def save_record_action(data: dict):
         registered_by=user.username,
     )
     db.session.add(record)
+    db.session.flush()
+    add_audit_log(
+        "record_created",
+        "record",
+        record.id,
+        {"registeredBy": user.username, "plateNumber": record.plate_number},
+        actor=user.username,
+    )
     db.session.commit()
     return api_success("Datos guardados en la base central", id=record.id)
 
@@ -709,6 +860,7 @@ def register_routes(app: Flask) -> None:
         if not record:
             return api_error("Registro no encontrado.", 404)
 
+        before = record_to_dict(record)
         try:
             values = validated_record_values(request.get_json(silent=True) or {})
         except ValueError as exc:
@@ -717,6 +869,12 @@ def register_routes(app: Flask) -> None:
         for field, value in values.items():
             setattr(record, field, value)
 
+        add_audit_log(
+            "record_updated",
+            "record",
+            record.id,
+            {"before": before, "after": record_to_dict(record)},
+        )
         db.session.commit()
         return api_success("Registro actualizado", record=record_to_dict(record))
 
@@ -727,7 +885,9 @@ def register_routes(app: Flask) -> None:
         if not record:
             return api_error("Registro no encontrado.", 404)
 
+        snapshot = record_to_dict(record)
         db.session.delete(record)
+        add_audit_log("record_deleted", "record", record_id, {"record": snapshot})
         db.session.commit()
         return api_success("Registro eliminado")
 
@@ -864,6 +1024,13 @@ def register_routes(app: Flask) -> None:
 
         if imported:
             db.session.commit()
+            add_audit_log(
+                "records_imported",
+                "record",
+                "bulk",
+                {"imported": imported, "skipped": skipped, "errors": errors},
+                commit=True,
+            )
         else:
             db.session.rollback()
 
@@ -907,6 +1074,7 @@ def register_routes(app: Flask) -> None:
             created_at=utcnow(),
         )
         db.session.add(user)
+        add_audit_log("user_created", "user", user.username, {"role": user.role, "active": user.active})
         db.session.commit()
         return api_success("Usuario creado", user=user_to_dict(user))
 
@@ -923,6 +1091,7 @@ def register_routes(app: Flask) -> None:
         if user.username == current_user.username and data.get("active") is False:
             return api_error("No puede desactivar su propio usuario administrador.")
 
+        before = user_to_dict(user)
         if "active" in data:
             user.active = bool(data["active"])
 
@@ -934,12 +1103,30 @@ def register_routes(app: Flask) -> None:
                 return api_error("No puede quitarse su propio rol administrador.")
             user.role = role
 
+        add_audit_log("user_updated", "user", user.username, {"before": before, "after": user_to_dict(user)})
         db.session.commit()
         return api_success("Usuario actualizado", user=user_to_dict(user))
+
+    @app.get("/api/audit-logs")
+    @require_auth(admin=True)
+    def api_audit_logs():
+        limit = min(max(int(request.args.get("limit", "200")), 1), 1000)
+        action = request.args.get("action", "").strip()
+        actor = request.args.get("actor", "").strip()
+
+        query = AuditLog.query
+        if action:
+            query = query.filter(AuditLog.action == action)
+        if actor:
+            query = query.filter(AuditLog.actor.ilike(f"%{actor}%"))
+
+        logs = query.order_by(AuditLog.id.desc()).limit(limit).all()
+        return api_success("Auditoria cargada", logs=[audit_log_to_dict(item) for item in logs])
 
 
 app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", "5000")), debug=True)
+    debug_enabled = os.getenv("FLASK_DEBUG", "false").lower() in {"1", "true", "yes"}
+    app.run(host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "5000")), debug=debug_enabled)
