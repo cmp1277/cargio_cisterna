@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import pytest
+from openpyxl import load_workbook
 
 from app import LOGIN_ATTEMPTS, create_app
 
@@ -171,3 +174,16 @@ def test_admin_actions_are_audited(client):
     assert "record_created" in actions
     assert "record_updated" in actions
     assert "record_deleted" in actions
+
+
+def test_admin_can_download_full_backup(client):
+    admin = login(client, "admin", "admin123")
+
+    response = client.get("/api/backup.xlsx", headers=auth_header(admin["token"]))
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "respaldo_cisternas_scpe_" in response.headers["Content-Disposition"]
+
+    workbook = load_workbook(BytesIO(response.data), read_only=True)
+    assert {"Resumen", "Registros", "Usuarios", "Auditoria"}.issubset(set(workbook.sheetnames))

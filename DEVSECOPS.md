@@ -14,6 +14,7 @@ Esta app ya incorpora controles DevSecOps en codigo, pruebas y pipeline.
 - Cabeceras HTTP de seguridad: CSP, HSTS en HTTPS, `X-Frame-Options`, `nosniff`, `Referrer-Policy` y `Permissions-Policy`.
 - Auditoria de eventos: login exitoso/fallido, bloqueo por rate limit, creacion/edicion/eliminacion de registros, importaciones y gestion de usuarios.
 - Panel administrador con tabla de auditoria.
+- Respaldo manual completo en Excel desde el panel administrador: registros, usuarios, auditoria y resumen.
 - Pruebas automatizadas con `pytest`.
 - Analisis estatico de seguridad con `bandit`.
 - Auditoria de dependencias Python con `pip-audit`.
@@ -64,3 +65,4 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 - Proteger la rama `main` en GitHub para exigir que el workflow pase antes de fusionar cambios.
 - Rotar contrasenas iniciales en produccion.
 - Revisar periodicamente el panel de auditoria.
+- Descargar un respaldo completo desde el panel administrador al menos una vez por semana mientras la base de datos siga en plan gratuito.

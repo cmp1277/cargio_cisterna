@@ -474,6 +474,25 @@ def record_export_row(record: WaterRecord) -> list:
     ]
 
 
+def audit_export_row(log: AuditLog) -> list:
+    return [
+        log.id,
+        as_utc(log.timestamp).isoformat(),
+        log.actor or "",
+        log.action,
+        log.target_type or "",
+        log.target_id or "",
+        log.ip_address or "",
+        log.user_agent or "",
+        log.details or "",
+    ]
+
+
+def set_sheet_widths(sheet, widths: list[int]) -> None:
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[chr(64 + index)].width = width
+
+
 def normalize_header(value) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(char for char in text if not unicodedata.combining(char))
@@ -923,9 +942,7 @@ def register_routes(app: Flask) -> None:
         for record in records:
             sheet.append(record_export_row(record))
 
-        widths = [8, 24, 26, 14, 18, 14, 16, 16, 12, 24, 28, 34, 18]
-        for index, width in enumerate(widths, start=1):
-            sheet.column_dimensions[chr(64 + index)].width = width
+        set_sheet_widths(sheet, [8, 24, 26, 14, 18, 14, 16, 16, 12, 24, 28, 34, 18])
 
         output = io.BytesIO()
         workbook.save(output)
@@ -934,6 +951,64 @@ def register_routes(app: Flask) -> None:
             output.getvalue(),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": "attachment; filename=registros_cisternas.xlsx"},
+        )
+
+    @app.get("/api/backup.xlsx")
+    @require_auth(admin=True)
+    def export_full_backup_xlsx():
+        generated_at = utcnow()
+        filename = f"respaldo_cisternas_scpe_{generated_at.strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+        records = WaterRecord.query.order_by(WaterRecord.id.asc()).all()
+        users = User.query.order_by(User.username.asc()).all()
+
+        add_audit_log(
+            "backup_exported",
+            "backup",
+            filename,
+            {"records": len(records), "users": len(users)},
+        )
+        db.session.commit()
+
+        audit_logs = AuditLog.query.order_by(AuditLog.id.asc()).all()
+
+        workbook = Workbook()
+        summary = workbook.active
+        summary.title = "Resumen"
+        summary.append(["Campo", "Valor"])
+        summary.append(["Generado UTC", as_utc(generated_at).isoformat()])
+        summary.append(["Generado por", request.current_user.username])
+        summary.append(["Registros incluidos", len(records)])
+        summary.append(["Usuarios incluidos", len(users)])
+        summary.append(["Eventos de auditoria incluidos", len(audit_logs)])
+        summary.append(["Nota", "Respaldo manual descargado desde el panel administrador SCPE."])
+        set_sheet_widths(summary, [32, 80])
+
+        records_sheet = workbook.create_sheet("Registros")
+        records_sheet.append(RECORD_EXPORT_HEADERS)
+        for record in records:
+            records_sheet.append(record_export_row(record))
+        set_sheet_widths(records_sheet, [8, 24, 26, 14, 18, 14, 16, 16, 12, 24, 28, 34, 18])
+
+        users_sheet = workbook.create_sheet("Usuarios")
+        users_sheet.append(["Usuario", "Rol", "Activo", "Creado UTC"])
+        for user in users:
+            users_sheet.append([user.username, user.role, "SI" if user.active else "NO", as_utc(user.created_at).isoformat()])
+        set_sheet_widths(users_sheet, [24, 18, 12, 24])
+
+        audit_sheet = workbook.create_sheet("Auditoria")
+        audit_sheet.append(["ID", "Fecha UTC", "Usuario", "Accion", "Tipo objetivo", "ID objetivo", "IP", "User-Agent", "Detalle"])
+        for log in audit_logs:
+            audit_sheet.append(audit_export_row(log))
+        set_sheet_widths(audit_sheet, [8, 24, 20, 24, 18, 24, 18, 36, 80])
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
     @app.get("/api/records/export.pdf")

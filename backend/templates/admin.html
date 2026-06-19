@@ -542,6 +542,7 @@
       <div>
         <span id="current-user" class="user-pill">Admin</span>
         <button id="refresh-button" class="btn secondary" type="button">Actualizar</button>
+        <button id="backup-button" class="btn secondary" type="button">Respaldo completo</button>
         <button id="logout-button" class="btn danger" type="button">Salir</button>
       </div>
     </div>
@@ -803,6 +804,7 @@
     const createUserButton = document.getElementById('create-user-button');
     const refreshButton = document.getElementById('refresh-button');
     const refreshAuditButton = document.getElementById('refresh-audit-button');
+    const backupButton = document.getElementById('backup-button');
     const exportButton = document.getElementById('export-button');
     const exportExcelButton = document.getElementById('export-excel-button');
     const exportPdfButton = document.getElementById('export-pdf-button');
@@ -1291,6 +1293,11 @@
 
     exportPdfButton.addEventListener('click', () => {
       downloadFile('/api/records/export.pdf', 'registros_cisternas.pdf', exportPdfButton);
+    });
+
+    backupButton.addEventListener('click', async () => {
+      await downloadFile('/api/backup.xlsx', 'respaldo_cisternas_scpe.xlsx', backupButton);
+      await loadAuditLogs();
     });
 
     importButton.addEventListener('click', () => {
