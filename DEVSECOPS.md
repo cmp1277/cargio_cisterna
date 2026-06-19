@@ -56,11 +56,11 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 - `SESSION_DURATION_MINUTES`: por ejemplo `30`.
 - `LOGIN_RATE_LIMIT_MAX_ATTEMPTS`: por ejemplo `8`.
 - `LOGIN_RATE_LIMIT_WINDOW_MINUTES`: por ejemplo `15`.
-- `CORS_ORIGINS`: restringir al dominio real cuando ya no se necesite acceso amplio.
+- `CORS_ORIGINS`: `https://cisternas-api-wqac.onrender.com,null`. El valor `null` se mantiene para compatibilidad con la APK Android que carga archivos locales en WebView.
 
 ## Pendiente operativo
 
-- Activar backups automaticos en PostgreSQL/Render.
+- Activar backups automaticos en PostgreSQL/Render desde el panel de Render. Esto depende del plan contratado y de permisos de la cuenta.
 - Proteger la rama `main` en GitHub para exigir que el workflow pase antes de fusionar cambios.
 - Rotar contrasenas iniciales en produccion.
 - Revisar periodicamente el panel de auditoria.

@@ -13,7 +13,7 @@ services:
       - key: SESSION_DURATION_MINUTES
         value: 30
       - key: CORS_ORIGINS
-        value: "*"
+        value: "https://cisternas-api-wqac.onrender.com,null"
       - key: ADMIN_PASSWORD
         sync: false
       - key: USER_PASSWORD

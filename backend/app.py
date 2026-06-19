@@ -27,6 +27,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
 MOBILE_APP_DIR = BASE_DIR / "mobile_app"
+DEFAULT_CORS_ORIGINS = "https://cisternas-api-wqac.onrender.com,null"
 load_dotenv(BASE_DIR / ".env")
 
 db = SQLAlchemy()
@@ -165,7 +166,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     db.init_app(app)
 
-    origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "*").split(",") if item.strip()]
+    origins = [item.strip() for item in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",") if item.strip()]
     CORS(app, resources={r"/api/*": {"origins": origins or "*"}})
 
     register_security_headers(app)

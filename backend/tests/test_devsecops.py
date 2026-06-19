@@ -46,6 +46,16 @@ def test_security_headers_are_present(client):
     assert "Strict-Transport-Security" in response.headers
 
 
+def test_cors_is_restricted_to_expected_origins(client):
+    allowed = client.get("/api/health", headers={"Origin": "https://cisternas-api-wqac.onrender.com"})
+    null_origin = client.get("/api/health", headers={"Origin": "null"})
+    denied = client.get("/api/health", headers={"Origin": "https://evil.example"})
+
+    assert allowed.headers["Access-Control-Allow-Origin"] == "https://cisternas-api-wqac.onrender.com"
+    assert null_origin.headers["Access-Control-Allow-Origin"] == "null"
+    assert "Access-Control-Allow-Origin" not in denied.headers
+
+
 def test_records_are_normalized_and_invalid_plate_is_rejected(client):
     admin = login(client, "admin", "admin123")
     user = login(client, "cliente", "cliente123")
