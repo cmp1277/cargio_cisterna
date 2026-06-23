@@ -669,7 +669,6 @@ def build_import_record(row: dict, fallback_username: str) -> WaterRecord:
     required = {
         "Conductor": driver_name,
         "Placa": plate_number,
-        "Codigo funcionario": employee_code,
         "EBAP": ebap,
         "Tipo empresa": company_type,
         "Empresa/Entidad": company_name,
@@ -691,6 +690,8 @@ def build_import_record(row: dict, fallback_username: str) -> WaterRecord:
     registered_by = str(import_value(normalized, "registered_by", fallback_username)).strip() or fallback_username
     if not User.query.get(registered_by):
         registered_by = fallback_username
+    if not employee_code:
+        employee_code = uppercase_text(registered_by)
 
     return WaterRecord(
         timestamp=parse_import_timestamp(import_value(normalized, "timestamp", "")),

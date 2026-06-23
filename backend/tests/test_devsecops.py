@@ -159,6 +159,31 @@ def test_mobile_record_uses_authenticated_user_when_employee_code_is_omitted(cli
     assert record["employeeCode"] == "CLIENTE"
 
 
+def test_import_does_not_require_employee_code(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    headers = auth_header(admin["token"])
+    csv_data = (
+        "Conductor,Placa,EBAP,Lectura inicial,Lectura final,Tipo empresa,Empresa/Entidad,Caracteristicas,Registrado por\n"
+        "operador importado,1234ABC,norte,10,20,particular,empresa prueba,,cliente\n"
+    )
+
+    imported = ok(
+        client.post(
+            "/api/records/import",
+            headers=headers,
+            data={"file": (BytesIO(csv_data.encode("utf-8")), "registros.csv")},
+            content_type="multipart/form-data",
+        )
+    )
+
+    records = ok(client.get("/api/records", headers=headers))["records"]
+    record = next(item for item in records if item["driverName"] == "OPERADOR IMPORTADO")
+    assert imported["imported"] == 1
+    assert imported["skipped"] == 0
+    assert record["employeeCode"] == "CLIENTE"
+    assert record["registeredBy"] == "cliente"
+
+
 def test_login_rate_limit_blocks_repeated_failures(client, monkeypatch):
     monkeypatch.setenv("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", "2")
     monkeypatch.setenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "15")
