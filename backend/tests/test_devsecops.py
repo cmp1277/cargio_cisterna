@@ -12,6 +12,8 @@ from app import LOGIN_ATTEMPTS, User, create_app
 ADMIN_TEST_PASSWORD = "TestAdminPassword123!"
 USER_TEST_PASSWORD = "TestUserPassword123!"
 CLIENT_TEST_PASSWORD = "TestClientPassword123!"
+NEW_CLIENT_TEST_PASSWORD = "NewClientPassword987!"
+NEW_ADMIN_TEST_PASSWORD = "NewAdminPassword987!"
 
 
 @pytest.fixture()
@@ -206,6 +208,54 @@ def test_admin_can_download_full_backup(client):
 
     workbook = load_workbook(BytesIO(response.data), read_only=True)
     assert {"Resumen", "Registros", "Usuarios", "Auditoria"}.issubset(set(workbook.sheetnames))
+
+
+def test_admin_can_change_user_password_and_revoke_sessions(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    user = login(client, "cliente", CLIENT_TEST_PASSWORD)
+    headers = auth_header(admin["token"])
+
+    changed = ok(
+        client.patch(
+            "/api/users/cliente/password",
+            headers=headers,
+            json={"password": NEW_CLIENT_TEST_PASSWORD},
+        )
+    )
+
+    assert changed["revokedSessions"] >= 1
+    old_login = client.post("/api/auth/login", json={"username": "cliente", "password": CLIENT_TEST_PASSWORD})
+    old_token = client.post("/api/auth/validate", json={"token": user["token"]})
+    new_login = client.post("/api/auth/login", json={"username": "cliente", "password": NEW_CLIENT_TEST_PASSWORD})
+    logs = ok(client.get("/api/audit-logs?limit=20", headers=headers))["logs"]
+
+    assert old_login.status_code == 401
+    assert old_token.status_code == 401
+    assert new_login.status_code == 200
+    assert "user_password_changed" in {item["action"] for item in logs}
+
+
+def test_self_password_change_requires_current_password_and_keeps_current_session(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    headers = auth_header(admin["token"])
+
+    rejected = client.patch(
+        "/api/users/admin/password",
+        headers=headers,
+        json={"password": NEW_ADMIN_TEST_PASSWORD},
+    )
+    changed = client.patch(
+        "/api/users/admin/password",
+        headers=headers,
+        json={"currentPassword": ADMIN_TEST_PASSWORD, "password": NEW_ADMIN_TEST_PASSWORD},
+    )
+    current_token_still_valid = client.post("/api/auth/validate", json={"token": admin["token"]})
+    new_login = client.post("/api/auth/login", json={"username": "admin", "password": NEW_ADMIN_TEST_PASSWORD})
+
+    assert rejected.status_code == 403
+    assert changed.status_code == 200
+    assert current_token_still_valid.status_code == 200
+    assert new_login.status_code == 200
 
 
 def test_token_in_query_string_is_not_accepted(client):

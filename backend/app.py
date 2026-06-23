@@ -315,6 +315,15 @@ def upload_limit_mb() -> str:
     return f"{limit / (1024 * 1024):g}"
 
 
+def validate_password_strength(password: str) -> None:
+    if len(password) < 8:
+        raise ValueError("La contrasena debe tener al menos 8 caracteres.")
+    if password in WEAK_INITIAL_PASSWORDS:
+        raise ValueError("La contrasena es demasiado comun. Use una contrasena unica.")
+    if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        raise ValueError("La contrasena debe incluir letras y numeros.")
+
+
 def client_ip() -> str:
     forwarded_for = request.headers.get("X-Forwarded-For", "")
     if forwarded_for:
@@ -1195,8 +1204,10 @@ def register_routes(app: Flask) -> None:
             return api_error("Usuario y contrasena requeridos.")
         if len(username) < 3:
             return api_error("El usuario debe tener al menos 3 caracteres.")
-        if len(password) < 6:
-            return api_error("La contrasena debe tener al menos 6 caracteres.")
+        try:
+            validate_password_strength(password)
+        except ValueError as exc:
+            return api_error(str(exc))
         if role not in {"admin", "user"}:
             return api_error("Rol no valido.")
         if User.query.get(username):
@@ -1213,6 +1224,45 @@ def register_routes(app: Flask) -> None:
         add_audit_log("user_created", "user", user.username, {"role": user.role, "active": user.active})
         db.session.commit()
         return api_success("Usuario creado", user=user_to_dict(user))
+
+    @app.patch("/api/users/<username>/password")
+    @require_auth(admin=True)
+    def api_update_user_password(username: str):
+        data = request.get_json(silent=True) or {}
+        target_username = username.strip().lower()
+        user = User.query.get(target_username)
+        if not user:
+            return api_error("Usuario no encontrado.", 404)
+
+        password = str(data.get("password", ""))
+        if not password:
+            return api_error("Nueva contrasena requerida.")
+        try:
+            validate_password_strength(password)
+        except ValueError as exc:
+            return api_error(str(exc))
+
+        current_user = request.current_user
+        current_token = get_token_from_request()
+        current_token_hash = hash_token(current_token) if current_token else ""
+        if user.username == current_user.username:
+            current_password = str(data.get("currentPassword", ""))
+            if not current_password or not check_password_hash(user.password_hash, current_password):
+                return api_error("Contrasena actual incorrecta.", 403)
+
+        user.password_hash = generate_password_hash(password)
+        sessions_query = Session.query.filter(Session.username == user.username)
+        if user.username == current_user.username and current_token_hash:
+            sessions_query = sessions_query.filter(Session.token_hash != current_token_hash)
+        revoked_sessions = sessions_query.delete(synchronize_session=False)
+        add_audit_log(
+            "user_password_changed",
+            "user",
+            user.username,
+            {"self": user.username == current_user.username, "revokedSessions": revoked_sessions},
+        )
+        db.session.commit()
+        return api_success("Contrasena actualizada", revokedSessions=revoked_sessions)
 
     @app.patch("/api/users/<username>")
     @require_auth(admin=True)

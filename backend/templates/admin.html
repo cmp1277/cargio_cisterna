@@ -399,6 +399,13 @@
       min-width: 144px;
     }
 
+    .user-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 220px;
+    }
+
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -418,6 +425,10 @@
       border: 1px solid rgba(255,255,255,0.45);
       border-radius: 24px;
       box-shadow: var(--shadow);
+    }
+
+    .modal-card.compact {
+      width: min(540px, calc(100vw - 24px));
     }
 
     .modal-head {
@@ -450,6 +461,12 @@
     .edit-grid .field { margin-bottom: 6px; }
     .edit-grid .wide { grid-column: span 2; }
     .edit-grid textarea { min-height: 56px; }
+
+    .password-grid {
+      display: grid;
+      gap: 12px;
+      padding: 18px 20px 8px;
+    }
 
     .modal-actions {
       position: sticky;
@@ -711,6 +728,42 @@
     </section>
   </main>
 
+  <section id="password-change-modal" class="modal-backdrop hidden" aria-hidden="true">
+    <form id="password-change-form" class="modal-card compact">
+      <div class="modal-head">
+        <div>
+          <h2 id="password-change-title">Cambiar contrasena</h2>
+          <p class="muted">Actualice la clave del usuario seleccionado.</p>
+        </div>
+        <button id="password-change-close" class="btn secondary small" type="button">Cerrar</button>
+      </div>
+
+      <div class="password-grid">
+        <div class="field">
+          <label for="passwordChangeUsername">Usuario</label>
+          <input id="passwordChangeUsername" name="username" readonly>
+        </div>
+        <div id="password-current-field" class="field hidden">
+          <label for="passwordCurrent">Contrasena actual</label>
+          <input id="passwordCurrent" name="currentPassword" type="password" autocomplete="current-password">
+        </div>
+        <div class="field">
+          <label for="passwordNew">Nueva contrasena</label>
+          <input id="passwordNew" name="password" type="password" autocomplete="new-password" required minlength="8">
+        </div>
+        <div class="field">
+          <label for="passwordConfirm">Confirmar nueva contrasena</label>
+          <input id="passwordConfirm" name="passwordConfirm" type="password" autocomplete="new-password" required minlength="8">
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="password-change-cancel" class="btn secondary" type="button">Cancelar</button>
+        <button id="password-change-save" class="btn" type="submit">Guardar contrasena</button>
+      </div>
+    </form>
+  </section>
+
   <section id="record-edit-modal" class="modal-backdrop hidden" aria-hidden="true">
     <form id="record-edit-form" class="modal-card">
       <div class="modal-head">
@@ -811,12 +864,24 @@
     const importButton = document.getElementById('import-button');
     const importFile = document.getElementById('import-file');
     const logoutButton = document.getElementById('logout-button');
+    const passwordChangeModal = document.getElementById('password-change-modal');
+    const passwordChangeForm = document.getElementById('password-change-form');
+    const passwordChangeTitle = document.getElementById('password-change-title');
+    const passwordChangeClose = document.getElementById('password-change-close');
+    const passwordChangeCancel = document.getElementById('password-change-cancel');
+    const passwordChangeSave = document.getElementById('password-change-save');
+    const passwordChangeUsername = document.getElementById('passwordChangeUsername');
+    const passwordCurrentField = document.getElementById('password-current-field');
+    const passwordCurrent = document.getElementById('passwordCurrent');
+    const passwordNew = document.getElementById('passwordNew');
+    const passwordConfirm = document.getElementById('passwordConfirm');
     const recordEditModal = document.getElementById('record-edit-modal');
     const recordEditForm = document.getElementById('record-edit-form');
     const recordEditTitle = document.getElementById('record-edit-title');
     const recordEditClose = document.getElementById('record-edit-close');
     const recordEditCancel = document.getElementById('record-edit-cancel');
     const recordEditSave = document.getElementById('record-edit-save');
+    let passwordTargetUser = null;
     let editingRecordId = null;
 
     function token() {
@@ -939,13 +1004,24 @@
       for (const user of users) {
         const tr = document.createElement('tr');
         const action = document.createElement('td');
-        const button = document.createElement('button');
-        button.className = user.active ? 'btn danger' : 'btn secondary';
-        button.type = 'button';
-        button.textContent = user.active ? 'Desactivar' : 'Reactivar';
-        button.disabled = user.username === current.username;
-        button.addEventListener('click', () => toggleUserActive(user));
-        action.appendChild(button);
+        const actionWrap = document.createElement('div');
+        const passwordButton = document.createElement('button');
+        const activeButton = document.createElement('button');
+
+        actionWrap.className = 'user-actions';
+        passwordButton.className = 'btn secondary small';
+        passwordButton.type = 'button';
+        passwordButton.textContent = 'Contrasena';
+        passwordButton.addEventListener('click', () => openPasswordModal(user));
+
+        activeButton.className = user.active ? 'btn danger small' : 'btn secondary small';
+        activeButton.type = 'button';
+        activeButton.textContent = user.active ? 'Desactivar' : 'Reactivar';
+        activeButton.disabled = user.username === current.username;
+        activeButton.addEventListener('click', () => toggleUserActive(user));
+
+        actionWrap.append(passwordButton, activeButton);
+        action.appendChild(actionWrap);
 
         tr.append(
           cell(user.username),
@@ -992,6 +1068,87 @@
         refreshAuditButton.disabled = false;
       }
     }
+
+    function currentStoredUser() {
+      try {
+        return JSON.parse(sessionStorage.getItem(USER_KEY) || '{}');
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function validatePasswordInput(password, confirmation) {
+      if (password.length < 8) {
+        throw new Error('La contrasena debe tener al menos 8 caracteres.');
+      }
+      if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+        throw new Error('La contrasena debe incluir letras y numeros.');
+      }
+      if (['admin123', 'usuario123', 'cliente123'].includes(password)) {
+        throw new Error('La contrasena es demasiado comun.');
+      }
+      if (password !== confirmation) {
+        throw new Error('La confirmacion no coincide.');
+      }
+    }
+
+    function openPasswordModal(user) {
+      const current = currentStoredUser();
+      const isSelf = user.username === current.username;
+      passwordTargetUser = user;
+      passwordChangeTitle.textContent = `Cambiar contrasena: ${user.username}`;
+      passwordChangeUsername.value = user.username;
+      passwordCurrent.value = '';
+      passwordNew.value = '';
+      passwordConfirm.value = '';
+      passwordCurrent.required = isSelf;
+      passwordCurrentField.classList.toggle('hidden', !isSelf);
+      passwordChangeModal.classList.remove('hidden');
+      passwordChangeModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      (isSelf ? passwordCurrent : passwordNew).focus();
+    }
+
+    function closePasswordModal() {
+      passwordTargetUser = null;
+      passwordChangeForm.reset();
+      passwordCurrent.required = false;
+      passwordCurrentField.classList.add('hidden');
+      passwordChangeModal.classList.add('hidden');
+      passwordChangeModal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    passwordChangeForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!passwordTargetUser) return;
+
+      try {
+        const password = passwordNew.value;
+        validatePasswordInput(password, passwordConfirm.value);
+        passwordChangeSave.disabled = true;
+        await api(`/api/users/${encodeURIComponent(passwordTargetUser.username)}/password`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            currentPassword: passwordCurrent.value,
+            password,
+          }),
+        });
+        closePasswordModal();
+        await loadAuditLogs();
+        alert('Contrasena actualizada correctamente.');
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        passwordChangeSave.disabled = false;
+      }
+    });
+
+    passwordChangeCancel.addEventListener('click', closePasswordModal);
+    passwordChangeClose.addEventListener('click', closePasswordModal);
+    passwordChangeModal.addEventListener('click', (event) => {
+      if (event.target === passwordChangeModal) closePasswordModal();
+    });
 
     async function toggleUserActive(user) {
       const nextActive = !user.active;
@@ -1166,7 +1323,9 @@
       }
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !recordEditModal.classList.contains('hidden')) {
+      if (event.key === 'Escape' && !passwordChangeModal.classList.contains('hidden')) {
+        closePasswordModal();
+      } else if (event.key === 'Escape' && !recordEditModal.classList.contains('hidden')) {
         closeEditModal();
       }
     });
