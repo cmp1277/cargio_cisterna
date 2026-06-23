@@ -236,6 +236,18 @@ def test_admin_can_download_full_backup(client):
 
     workbook = load_workbook(BytesIO(response.data), read_only=True)
     assert {"Resumen", "Registros", "Usuarios", "Auditoria"}.issubset(set(workbook.sheetnames))
+    records_header = [cell.value for cell in next(workbook["Registros"].iter_rows(min_row=1, max_row=1))]
+    assert "Codigo funcionario" not in records_header
+
+
+def test_record_pdf_export_does_not_include_employee_code_header(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+
+    response = client.get("/api/records/export.pdf", headers=auth_header(admin["token"]))
+
+    assert response.status_code == 200
+    assert b"Func." not in response.data
+    assert b"Codigo funcionario" not in response.data
 
 
 def test_admin_can_change_user_password_and_revoke_sessions(client):
@@ -336,14 +348,16 @@ def test_exported_records_escape_spreadsheet_formulas(client):
 
     csv_response = client.get("/api/records/export.csv", headers=headers)
     rows = list(csv.reader(StringIO(csv_response.data.decode("utf-8"))))
-    assert rows[1][10].startswith("'=")
-    assert rows[1][11].startswith("'@")
+    assert "Codigo funcionario" not in rows[0]
+    assert rows[1][9].startswith("'=")
+    assert rows[1][10].startswith("'@")
 
     xlsx_response = client.get("/api/records/export.xlsx", headers=headers)
     workbook = load_workbook(BytesIO(xlsx_response.data), read_only=True, data_only=False)
     sheet = workbook["Registros"]
-    assert sheet["K2"].value.startswith("'=")
-    assert sheet["L2"].value.startswith("'@")
+    assert "Codigo funcionario" not in [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+    assert sheet["J2"].value.startswith("'=")
+    assert sheet["K2"].value.startswith("'@")
 
 
 def test_oversized_import_is_rejected(client):

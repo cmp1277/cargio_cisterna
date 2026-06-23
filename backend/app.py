@@ -48,7 +48,6 @@ RECORD_EXPORT_HEADERS = [
     "Fecha UTC",
     "Conductor",
     "Placa",
-    "Codigo funcionario",
     "EBAP",
     "Lectura inicial",
     "Lectura final",
@@ -528,7 +527,6 @@ def record_export_row(record: WaterRecord) -> list:
         as_utc(record.timestamp).isoformat(),
         record.driver_name,
         record.plate_number,
-        record.employee_code,
         record.ebap,
         record.initial_reading,
         record.final_reading,
@@ -1014,7 +1012,7 @@ def register_routes(app: Flask) -> None:
         for record in records:
             sheet.append(record_export_row(record))
 
-        set_sheet_widths(sheet, [8, 24, 26, 14, 18, 14, 16, 16, 12, 24, 28, 34, 18])
+        set_sheet_widths(sheet, [8, 24, 26, 14, 14, 16, 16, 12, 24, 28, 34, 18])
 
         output = io.BytesIO()
         workbook.save(output)
@@ -1060,7 +1058,7 @@ def register_routes(app: Flask) -> None:
         records_sheet.append(RECORD_EXPORT_HEADERS)
         for record in records:
             records_sheet.append(record_export_row(record))
-        set_sheet_widths(records_sheet, [8, 24, 26, 14, 18, 14, 16, 16, 12, 24, 28, 34, 18])
+        set_sheet_widths(records_sheet, [8, 24, 26, 14, 14, 16, 16, 12, 24, 28, 34, 18])
 
         users_sheet = workbook.create_sheet("Usuarios")
         users_sheet.append(["Usuario", "Rol", "Activo", "Creado UTC"])
@@ -1105,7 +1103,7 @@ def register_routes(app: Flask) -> None:
             Spacer(1, 12),
         ]
 
-        pdf_headers = ["ID", "Fecha", "Conductor", "Placa", "Func.", "EBAP", "Lecturas", "Vol.", "Empresa", "Obs.", "Usuario"]
+        pdf_headers = ["ID", "Fecha", "Conductor", "Placa", "EBAP", "Lecturas", "Vol.", "Empresa", "Obs.", "Usuario"]
         table_data = [pdf_headers]
         for record in records:
             row = [
@@ -1113,7 +1111,6 @@ def register_routes(app: Flask) -> None:
                 as_utc(record.timestamp).strftime("%d/%m/%Y %H:%M"),
                 record.driver_name,
                 record.plate_number,
-                record.employee_code,
                 record.ebap,
                 f"{record.initial_reading:g} -> {record.final_reading:g}",
                 f"{record.load_volume:.2f}",
@@ -1123,7 +1120,7 @@ def register_routes(app: Flask) -> None:
             ]
             table_data.append([Paragraph(str(value), styles["BodyText"]) for value in row])
 
-        table = Table(table_data, repeatRows=1, colWidths=[28, 76, 90, 58, 52, 58, 68, 44, 130, 120, 58])
+        table = Table(table_data, repeatRows=1, colWidths=[28, 76, 98, 62, 58, 72, 44, 140, 128, 58])
         table.setStyle(
             TableStyle(
                 [
