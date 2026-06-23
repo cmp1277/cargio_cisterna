@@ -951,7 +951,10 @@ def register_routes(app: Flask) -> None:
 
         before = record_to_dict(record)
         try:
-            values = validated_record_values(request.get_json(silent=True) or {})
+            values = validated_record_values(
+                request.get_json(silent=True) or {},
+                fallback_employee_code=record.employee_code,
+            )
         except ValueError as exc:
             return api_error(str(exc))
 

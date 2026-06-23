@@ -622,7 +622,7 @@
       <form id="filters-form" class="filters">
         <div class="field">
           <label for="q">Buscar</label>
-          <input id="q" name="q" placeholder="Conductor, placa, empresa, funcionario">
+          <input id="q" name="q" placeholder="Conductor, placa, empresa">
         </div>
         <div class="field">
           <label for="ebap">EBAP</label>
@@ -685,7 +685,6 @@
               <th>Fecha</th>
               <th>Conductor</th>
               <th>Placa</th>
-              <th>Funcionario</th>
               <th>EBAP</th>
               <th>Lecturas</th>
               <th>Volumen</th>
@@ -782,10 +781,6 @@
         <div class="field">
           <label for="editPlateNumber">Placa</label>
           <input id="editPlateNumber" name="plateNumber" maxlength="10" placeholder="Ej: 2127 - ACC" required>
-        </div>
-        <div class="field">
-          <label for="editEmployeeCode">Codigo funcionario</label>
-          <input id="editEmployeeCode" name="employeeCode" required>
         </div>
         <div class="field">
           <label for="editEbap">EBAP</label>
@@ -983,7 +978,6 @@
           cell(formatDate(record.timestampIso)),
           cell(record.driverName),
           cell(record.plateNumber),
-          cell(record.employeeCode),
           cell(record.ebap),
           cell(`${record.initialReading} -> ${record.finalReading}`),
           cell(Number(record.loadVolume).toFixed(2)),
@@ -1198,7 +1192,6 @@
       recordEditTitle.textContent = `Editar registro #${record.id}`;
       setEditField('driverName', record.driverName);
       setEditField('plateNumber', record.plateNumber);
-      setEditField('employeeCode', record.employeeCode);
       setEditField('ebap', record.ebap);
       setEditField('initialReading', record.initialReading);
       setEditField('finalReading', record.finalReading);
@@ -1271,7 +1264,6 @@
       return {
         driverName: requiredText('driverName', 'Conductor'),
         plateNumber,
-        employeeCode: requiredText('employeeCode', 'Codigo funcionario'),
         ebap: requiredText('ebap', 'EBAP'),
         initialReading,
         finalReading,
@@ -1318,7 +1310,7 @@
         event.target.value = formatPlateValue(event.target.value);
         return;
       }
-      if (['driverName', 'employeeCode', 'companyName', 'characteristics'].includes(event.target.name)) {
+      if (['driverName', 'companyName', 'characteristics'].includes(event.target.name)) {
         event.target.value = event.target.value.toUpperCase();
       }
     });
