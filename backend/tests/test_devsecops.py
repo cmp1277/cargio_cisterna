@@ -1,19 +1,25 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import csv
 from io import BytesIO
+from io import StringIO
 
 import pytest
 from openpyxl import load_workbook
 
-from app import LOGIN_ATTEMPTS, create_app
+from app import LOGIN_ATTEMPTS, User, create_app
+
+ADMIN_TEST_PASSWORD = "TestAdminPassword123!"
+USER_TEST_PASSWORD = "TestUserPassword123!"
+CLIENT_TEST_PASSWORD = "TestClientPassword123!"
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     LOGIN_ATTEMPTS.clear()
-    monkeypatch.setenv("ADMIN_PASSWORD", "admin123")
-    monkeypatch.setenv("USER_PASSWORD", "usuario123")
-    monkeypatch.setenv("CLIENT_PASSWORD", "cliente123")
+    monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_TEST_PASSWORD)
+    monkeypatch.setenv("USER_PASSWORD", USER_TEST_PASSWORD)
+    monkeypatch.setenv("CLIENT_PASSWORD", CLIENT_TEST_PASSWORD)
 
     app = create_app(
         {
@@ -59,9 +65,22 @@ def test_cors_is_restricted_to_expected_origins(client):
     assert "Access-Control-Allow-Origin" not in denied.headers
 
 
+def test_insecure_initial_passwords_are_not_seeded_outside_testing(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin123")
+    monkeypatch.setenv("USER_PASSWORD", "usuario123")
+    monkeypatch.setenv("CLIENT_PASSWORD", "cliente123")
+
+    app = create_app({"SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "prod_like.db")})
+
+    with app.app_context():
+        assert User.query.get("admin") is None
+        assert User.query.get("usuario") is None
+        assert User.query.get("cliente") is None
+
+
 def test_records_are_normalized_and_invalid_plate_is_rejected(client):
-    admin = login(client, "admin", "admin123")
-    user = login(client, "cliente", "cliente123")
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    user = login(client, "cliente", CLIENT_TEST_PASSWORD)
 
     created = ok(
         client.post(
@@ -125,8 +144,8 @@ def test_login_rate_limit_blocks_repeated_failures(client, monkeypatch):
 
 
 def test_admin_actions_are_audited(client):
-    admin = login(client, "admin", "admin123")
-    user = login(client, "cliente", "cliente123")
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    user = login(client, "cliente", CLIENT_TEST_PASSWORD)
     headers = auth_header(admin["token"])
 
     created = ok(
@@ -177,7 +196,7 @@ def test_admin_actions_are_audited(client):
 
 
 def test_admin_can_download_full_backup(client):
-    admin = login(client, "admin", "admin123")
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
 
     response = client.get("/api/backup.xlsx", headers=auth_header(admin["token"]))
 
@@ -187,3 +206,78 @@ def test_admin_can_download_full_backup(client):
 
     workbook = load_workbook(BytesIO(response.data), read_only=True)
     assert {"Resumen", "Registros", "Usuarios", "Auditoria"}.issubset(set(workbook.sheetnames))
+
+
+def test_token_in_query_string_is_not_accepted(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+
+    rejected = client.get(f"/api/records?token={admin['token']}")
+    accepted = client.get("/api/records", headers=auth_header(admin["token"]))
+
+    assert rejected.status_code == 401
+    assert accepted.status_code == 200
+
+
+def test_invalid_limit_parameters_return_400(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    headers = auth_header(admin["token"])
+
+    records = client.get("/api/records?limit=abc", headers=headers)
+    audit = client.get("/api/audit-logs?limit=abc", headers=headers)
+
+    assert records.status_code == 400
+    assert audit.status_code == 400
+    assert "debe ser numerico" in records.get_json()["message"]
+    assert "debe ser numerico" in audit.get_json()["message"]
+
+
+def test_exported_records_escape_spreadsheet_formulas(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    user = login(client, "cliente", CLIENT_TEST_PASSWORD)
+    headers = auth_header(admin["token"])
+
+    ok(
+        client.post(
+            "/api/mobile",
+            json={
+                "action": "saveData",
+                "token": user["token"],
+                "driverName": "formula test",
+                "plateNumber": "7777abc",
+                "employeeCode": "1277",
+                "ebap": "norte",
+                "initialReading": 1,
+                "finalReading": 3,
+                "loadVolume": 2,
+                "companyType": "particular",
+                "companyName": "=HYPERLINK(\"https://evil.example\")",
+                "characteristics": "@SUM(1,1)",
+            },
+        )
+    )
+
+    csv_response = client.get("/api/records/export.csv", headers=headers)
+    rows = list(csv.reader(StringIO(csv_response.data.decode("utf-8"))))
+    assert rows[1][10].startswith("'=")
+    assert rows[1][11].startswith("'@")
+
+    xlsx_response = client.get("/api/records/export.xlsx", headers=headers)
+    workbook = load_workbook(BytesIO(xlsx_response.data), read_only=True, data_only=False)
+    sheet = workbook["Registros"]
+    assert sheet["K2"].value.startswith("'=")
+    assert sheet["L2"].value.startswith("'@")
+
+
+def test_oversized_import_is_rejected(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    client.application.config["MAX_CONTENT_LENGTH"] = 128
+
+    response = client.post(
+        "/api/records/import",
+        headers=auth_header(admin["token"]),
+        data={"file": (BytesIO(b"x" * 256), "registros.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 413
+    assert "Archivo demasiado grande" in response.get_json()["message"]

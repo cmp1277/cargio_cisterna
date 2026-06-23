@@ -3,6 +3,7 @@ package com.scpe.cisternas;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.net.ConnectivityManager;
+import android.net.Uri;
 import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.view.View;
@@ -15,6 +16,7 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
+    private static final String APP_URL = "https://cisternas-api-wqac.onrender.com/app";
     private WebView webView;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -35,18 +37,18 @@ public class MainActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        // The app loads trusted local assets and must call the HTTPS backend API.
-        settings.setAllowFileAccessFromFileURLs(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return false;
+                Uri uri = request.getUrl();
+                return !"https".equals(uri.getScheme()) || !"cisternas-api-wqac.onrender.com".equals(uri.getHost());
             }
         });
 
@@ -56,7 +58,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Sin conexion: algunas funciones requieren internet", Toast.LENGTH_LONG).show();
         }
 
-        webView.loadUrl("file:///android_asset/www/index.html");
+        webView.loadUrl(APP_URL);
     }
 
     private boolean hasNetwork() {

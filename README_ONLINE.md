@@ -28,9 +28,7 @@ http://localhost:5000/admin
 
 Usuarios iniciales:
 
-- `admin` / `admin123`
-- `usuario` / `usuario123`
-- `cliente` / `cliente123`
+El backend solo los crea si defines `ADMIN_PASSWORD`, `USER_PASSWORD` y `CLIENT_PASSWORD` con contrasenas seguras. No uses valores conocidos como `admin123`, `usuario123` o `cliente123`.
 
 Desde el panel administrador puedes crear mas usuarios. Usa rol `Administrador` para acceso total al panel y rol `Cliente / Usuario` para registrar cargas desde `/app` o desde el APK.
 
@@ -126,6 +124,8 @@ ADMIN_PASSWORD
 USER_PASSWORD
 CLIENT_PASSWORD
 ```
+
+Usa contrasenas largas y unicas. Si dejas una de estas variables vacia, ese usuario inicial no se creara.
 
 9. Haz clic en `Deploy Blueprint`.
 

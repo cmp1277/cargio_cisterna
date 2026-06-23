@@ -51,13 +51,14 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 
 - `SECRET_KEY`: clave larga y aleatoria.
 - `DATABASE_URL`: PostgreSQL de Render.
-- `ADMIN_PASSWORD`: cambiar el valor por defecto.
-- `USER_PASSWORD`: cambiar el valor por defecto.
-- `CLIENT_PASSWORD`: cambiar el valor por defecto.
+- `ADMIN_PASSWORD`: contrasena larga y unica para crear el administrador inicial.
+- `USER_PASSWORD`: contrasena larga y unica para crear el usuario inicial.
+- `CLIENT_PASSWORD`: contrasena larga y unica para crear el cliente inicial.
 - `SESSION_DURATION_MINUTES`: por ejemplo `30`.
 - `LOGIN_RATE_LIMIT_MAX_ATTEMPTS`: por ejemplo `8`.
 - `LOGIN_RATE_LIMIT_WINDOW_MINUTES`: por ejemplo `15`.
-- `CORS_ORIGINS`: `https://cisternas-api-wqac.onrender.com,null`. El valor `null` se mantiene para compatibilidad con la APK Android que carga archivos locales en WebView.
+- `MAX_UPLOAD_BYTES`: por ejemplo `5242880` para limitar importaciones a 5 MB.
+- `CORS_ORIGINS`: `https://cisternas-api-wqac.onrender.com,null`. El valor `null` solo debe mantenerse mientras existan APKs antiguas que cargan HTML local; despues de reinstalar la APK nueva en todos los celulares, retiralo.
 
 ## Pendiente operativo
 

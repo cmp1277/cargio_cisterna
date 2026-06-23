@@ -13,7 +13,7 @@ from functools import wraps
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory
+from flask import Flask, Response, current_app, jsonify, redirect, render_template, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl import Workbook, load_workbook
@@ -22,12 +22,22 @@ from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import or_
+from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
 BASE_DIR = Path(__file__).resolve().parent
 MOBILE_APP_DIR = BASE_DIR / "mobile_app"
 DEFAULT_CORS_ORIGINS = "https://cisternas-api-wqac.onrender.com,null"
+DEFAULT_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024
+FORMULA_PREFIXES = ("=", "+", "-", "@")
+FORMULA_LEADING_CHARS = ("\t", "\r", "\n")
+INITIAL_USERS = [
+    ("admin", "ADMIN_PASSWORD", "admin"),
+    ("usuario", "USER_PASSWORD", "user"),
+    ("cliente", "CLIENT_PASSWORD", "user"),
+]
+WEAK_INITIAL_PASSWORDS = {"admin123", "usuario123", "cliente123"}
 load_dotenv(BASE_DIR / ".env")
 
 db = SQLAlchemy()
@@ -155,11 +165,12 @@ def create_app(test_config: dict | None = None) -> Flask:
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
     app.config.update(
-        SECRET_KEY=os.getenv("SECRET_KEY", "change-this-secret-key"),
+        SECRET_KEY=os.getenv("SECRET_KEY") or secrets.token_urlsafe(32),
         SQLALCHEMY_DATABASE_URI=configured_database_uri(app),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         JSON_SORT_KEYS=False,
         SESSION_DURATION_MINUTES=int(os.getenv("SESSION_DURATION_MINUTES", "30")),
+        MAX_CONTENT_LENGTH=int(os.getenv("MAX_UPLOAD_BYTES", str(DEFAULT_UPLOAD_LIMIT_BYTES))),
     )
     if test_config:
         app.config.update(test_config)
@@ -169,6 +180,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     origins = [item.strip() for item in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",") if item.strip()]
     CORS(app, resources={r"/api/*": {"origins": origins or "*"}})
 
+    register_error_handlers(app)
     register_security_headers(app)
     register_routes(app)
 
@@ -180,13 +192,24 @@ def create_app(test_config: dict | None = None) -> Flask:
 
 
 def seed_default_users() -> None:
-    defaults = [
-        ("admin", os.getenv("ADMIN_PASSWORD", "admin123"), "admin"),
-        ("usuario", os.getenv("USER_PASSWORD", "usuario123"), "user"),
-        ("cliente", os.getenv("CLIENT_PASSWORD", "cliente123"), "user"),
-    ]
-    for username, password, role in defaults:
+    created_any = False
+    allow_weak_passwords = bool(current_app.config.get("TESTING")) or os.getenv(
+        "ALLOW_INSECURE_INITIAL_PASSWORDS", ""
+    ).lower() in {"1", "true", "yes"}
+
+    for username, env_name, role in INITIAL_USERS:
         if User.query.get(username):
+            continue
+        password = os.getenv(env_name, "").strip()
+        if not password:
+            current_app.logger.warning("Initial user %s was not created because %s is not set.", username, env_name)
+            continue
+        if password in WEAK_INITIAL_PASSWORDS and not allow_weak_passwords:
+            current_app.logger.warning(
+                "Initial user %s was not created because %s uses an insecure default password.",
+                username,
+                env_name,
+            )
             continue
         db.session.add(
             User(
@@ -197,7 +220,9 @@ def seed_default_users() -> None:
                 created_at=utcnow(),
             )
         )
-    db.session.commit()
+        created_any = True
+    if created_any:
+        db.session.commit()
 
 
 def hash_token(token: str) -> str:
@@ -225,7 +250,7 @@ def get_token_from_request(data: dict | None = None) -> str:
         return auth_header[7:].strip()
     if data and data.get("token"):
         return str(data["token"]).strip()
-    return request.args.get("token", "").strip()
+    return ""
 
 
 def find_session_user(token: str, extend: bool = True) -> User | None:
@@ -262,6 +287,32 @@ def api_success(message: str, **extra):
 
 def api_error(message: str, status: int = 400):
     return jsonify({"success": False, "message": message}), status
+
+
+def safe_export_cell(value):
+    if isinstance(value, str) and (
+        value.startswith(FORMULA_LEADING_CHARS) or value.lstrip().startswith(FORMULA_PREFIXES)
+    ):
+        return "'" + value
+    return value
+
+
+def safe_export_row(values: list) -> list:
+    return [safe_export_cell(value) for value in values]
+
+
+def request_int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = request.args.get(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"El parametro {name} debe ser numerico.") from exc
+    return min(max(value, minimum), maximum)
+
+
+def upload_limit_mb() -> str:
+    limit = int(current_app.config.get("MAX_CONTENT_LENGTH") or DEFAULT_UPLOAD_LIMIT_BYTES)
+    return f"{limit / (1024 * 1024):g}"
 
 
 def client_ip() -> str:
@@ -368,6 +419,12 @@ def register_security_headers(app: Flask) -> None:
         return response
 
 
+def register_error_handlers(app: Flask) -> None:
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_too_large(_error):
+        return api_error(f"Archivo demasiado grande. Maximo permitido: {upload_limit_mb()} MB.", 413)
+
+
 def require_auth(admin: bool = False):
     def decorator(func):
         @wraps(func)
@@ -457,7 +514,7 @@ def user_to_dict(user: User) -> dict:
 
 
 def record_export_row(record: WaterRecord) -> list:
-    return [
+    return safe_export_row([
         record.id,
         as_utc(record.timestamp).isoformat(),
         record.driver_name,
@@ -471,11 +528,11 @@ def record_export_row(record: WaterRecord) -> list:
         record.company_name,
         record.characteristics or "",
         record.registered_by,
-    ]
+    ])
 
 
 def audit_export_row(log: AuditLog) -> list:
-    return [
+    return safe_export_row([
         log.id,
         as_utc(log.timestamp).isoformat(),
         log.actor or "",
@@ -485,7 +542,7 @@ def audit_export_row(log: AuditLog) -> list:
         log.ip_address or "",
         log.user_agent or "",
         log.details or "",
-    ]
+    ])
 
 
 def set_sheet_widths(sheet, widths: list[int]) -> None:
@@ -862,7 +919,10 @@ def register_routes(app: Flask) -> None:
     @app.get("/api/records")
     @require_auth(admin=True)
     def api_records():
-        limit = min(max(int(request.args.get("limit", "500")), 1), 2000)
+        try:
+            limit = request_int_arg("limit", 500, 1, 2000)
+        except ValueError as exc:
+            return api_error(str(exc))
         query = apply_record_filters(WaterRecord.query)
         records = query.order_by(WaterRecord.id.desc()).limit(limit).all()
         total_volume = round(sum(item.load_volume for item in records), 2)
@@ -1186,7 +1246,10 @@ def register_routes(app: Flask) -> None:
     @app.get("/api/audit-logs")
     @require_auth(admin=True)
     def api_audit_logs():
-        limit = min(max(int(request.args.get("limit", "200")), 1), 1000)
+        try:
+            limit = request_int_arg("limit", 200, 1, 1000)
+        except ValueError as exc:
+            return api_error(str(exc))
         action = request.args.get("action", "").strip()
         actor = request.args.get("actor", "").strip()
 

@@ -22,9 +22,9 @@ Busca esta linea y reemplaza la URL por tu backend publicado:
 
 Estos usuarios se crean en el backend, no en el celular:
 
-- Administrador: `admin` / `admin123`
-- Usuario: `usuario` / `usuario123`
-- Cliente: `cliente` / `cliente123`
+- Administrador: `admin` / valor definido en `ADMIN_PASSWORD`
+- Usuario: `usuario` / valor definido en `USER_PASSWORD`
+- Cliente: `cliente` / valor definido en `CLIENT_PASSWORD`
 
 Cambia esas contrasenas en `backend/.env` antes de ponerlo en produccion.
 

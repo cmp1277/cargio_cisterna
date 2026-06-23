@@ -32,7 +32,7 @@ POST /api/mobile
 ```
 
 ```json
-{ "action": "login", "username": "usuario", "password": "usuario123" }
+{ "action": "login", "username": "usuario", "password": "CONTRASENA_CONFIGURADA" }
 ```
 
 ```json
@@ -63,8 +63,9 @@ POST /api/mobile
 - `CORS_ORIGINS`: origenes permitidos. Usa `*` si la app carga desde WebView local.
 - `DATABASE_URL`: conexion PostgreSQL. Si queda vacio, usa SQLite local.
 - `ADMIN_PASSWORD`, `USER_PASSWORD`, `CLIENT_PASSWORD`: contrasenas iniciales.
+- `MAX_UPLOAD_BYTES`: limite maximo para importaciones CSV/XLSX.
 
-Las contrasenas iniciales solo se aplican si el usuario no existe todavia.
+Las contrasenas iniciales solo se aplican si el usuario no existe todavia. Si no configuras una variable de contrasena, ese usuario inicial no se crea. Los valores inseguros `admin123`, `usuario123` y `cliente123` se bloquean fuera de pruebas automatizadas.
 
 ## Produccion HTTPS
 
