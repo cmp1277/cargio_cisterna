@@ -131,6 +131,34 @@ def test_records_are_normalized_and_invalid_plate_is_rejected(client):
     assert invalid.get_json()["success"] is False
 
 
+def test_mobile_record_uses_authenticated_user_when_employee_code_is_omitted(client):
+    admin = login(client, "admin", ADMIN_TEST_PASSWORD)
+    user = login(client, "cliente", CLIENT_TEST_PASSWORD)
+
+    created = ok(
+        client.post(
+            "/api/mobile",
+            json={
+                "action": "saveData",
+                "token": user["token"],
+                "driverName": "operador sin codigo",
+                "plateNumber": "4444abc",
+                "ebap": "norte",
+                "initialReading": 10,
+                "finalReading": 20,
+                "loadVolume": 10,
+                "companyType": "particular",
+                "companyName": "andina",
+                "characteristics": "",
+            },
+        )
+    )
+
+    records = ok(client.get("/api/records", headers=auth_header(admin["token"])))["records"]
+    record = next(item for item in records if item["id"] == created["id"])
+    assert record["employeeCode"] == "CLIENTE"
+
+
 def test_login_rate_limit_blocks_repeated_failures(client, monkeypatch):
     monkeypatch.setenv("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", "2")
     monkeypatch.setenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "15")

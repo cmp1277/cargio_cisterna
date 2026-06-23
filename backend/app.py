@@ -710,7 +710,7 @@ def build_import_record(row: dict, fallback_username: str) -> WaterRecord:
     )
 
 
-def validated_record_values(data: dict) -> dict:
+def validated_record_values(data: dict, fallback_employee_code: str = "") -> dict:
     try:
         plate_number = normalize_plate_number(clean_text(data, "plateNumber"))
     except ValueError as exc:
@@ -719,7 +719,7 @@ def validated_record_values(data: dict) -> dict:
     required_text = {
         "driverName": uppercase_text(data.get("driverName")),
         "plateNumber": plate_number,
-        "employeeCode": uppercase_text(data.get("employeeCode")),
+        "employeeCode": uppercase_text(data.get("employeeCode") or fallback_employee_code),
         "ebap": uppercase_text(data.get("ebap")),
         "companyType": uppercase_text(data.get("companyType")),
         "companyName": uppercase_text(data.get("companyName")),
@@ -806,7 +806,7 @@ def save_record_action(data: dict):
         return api_error("Sesion expirada. Inicie sesion nuevamente.", 401)
 
     try:
-        values = validated_record_values(data)
+        values = validated_record_values(data, fallback_employee_code=user.username)
     except ValueError as exc:
         return api_error(str(exc))
 

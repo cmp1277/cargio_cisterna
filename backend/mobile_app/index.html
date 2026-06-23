@@ -309,7 +309,6 @@
     #plate-number,
     #company-type,
     #company-name,
-    #employee-code,
     #characteristics,
     #ebap {
       text-transform: uppercase;
@@ -586,14 +585,9 @@
           </select>
         </div>
 
-        <div class="field span-2">
+        <div class="field span-3">
           <label for="company-name">Empresa / Entidad</label>
           <input id="company-name" required placeholder="Ej: CONSTRUCTORA ANDINA">
-        </div>
-
-        <div class="field span-2">
-          <label for="employee-code">Codigo de funcionario</label>
-          <input id="employee-code" required placeholder="Ej: 1277">
         </div>
 
         <div class="field span-3">
@@ -770,7 +764,7 @@
     }
 
     function installUppercaseInputs() {
-      ['driver-name', 'company-name', 'employee-code', 'characteristics'].forEach((id) => {
+      ['driver-name', 'company-name', 'characteristics'].forEach((id) => {
         document.getElementById(id).addEventListener('input', (event) => {
           event.target.value = event.target.value.toUpperCase();
         });
@@ -868,7 +862,6 @@
         token: user.token,
         driverName: upperFieldValue('driver-name'),
         plateNumber,
-        employeeCode: upperFieldValue('employee-code'),
         ebap: upperFieldValue('ebap'),
         initialReading: initial,
         finalReading: final,
