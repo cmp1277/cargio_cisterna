@@ -174,6 +174,14 @@ def create_app(test_config: dict | None = None) -> Flask:
     if test_config:
         app.config.update(test_config)
 
+    # PythonAnywhere closes idle MySQL connections after 300 seconds.
+    database_uri = str(app.config["SQLALCHEMY_DATABASE_URI"])
+    if database_uri.split(":", 1)[0].split("+", 1)[0] == "mysql":
+        engine_options = dict(app.config.get("SQLALCHEMY_ENGINE_OPTIONS") or {})
+        engine_options.setdefault("pool_recycle", 280)
+        engine_options.setdefault("pool_pre_ping", True)
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
+
     db.init_app(app)
 
     origins = [item.strip() for item in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",") if item.strip()]

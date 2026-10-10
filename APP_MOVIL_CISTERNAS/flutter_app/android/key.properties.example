@@ -1,0 +1,5 @@
+# Copiar como key.properties y completar localmente; no subir claves al repositorio.
+storeFile=C:/ruta/segura/cisternas-release.jks
+storePassword=
+keyAlias=
+keyPassword=

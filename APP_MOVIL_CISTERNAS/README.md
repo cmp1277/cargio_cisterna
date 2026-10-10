@@ -1,5 +1,13 @@
 # App Movil Cisternas
 
+## Version Flutter para Android e iOS
+
+La migracion nativa esta en [`flutter_app`](flutter_app/README.md). Abre esa subcarpeta en Android Studio para trabajar con Flutter. Consulta [`flutter_app/VALIDACION.md`](flutter_app/VALIDACION.md) para conocer las comprobaciones realizadas y los pasos pendientes.
+
+La configuracion para alojar la API en la cuenta `crismp` de PythonAnywhere se documenta en [`backend/deploy/PYTHONANYWHERE.md`](../backend/deploy/PYTHONANYWHERE.md). El codigo de esta app y del backend forma parte del repositorio [`cmp1277/cargio_cisterna`](https://github.com/cmp1277/cargio_cisterna).
+
+El proyecto Android de esta carpeta se conserva como referencia. Su `MainActivity` actual carga la pagina remota `https://cisternas-api-wqac.onrender.com/app`; el HTML local de `assets/www` no se ejecuta en esta version. Las instrucciones siguientes describen el proyecto anterior.
+
 Proyecto Android WebView para registrar cargas de agua desde celulares.
 
 Esta version ya no guarda los registros en SQLite local del celular. La app envia login y registros a una API central configurada en:

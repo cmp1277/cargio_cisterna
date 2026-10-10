@@ -4,3 +4,6 @@ instance/
 *.sqlite
 __pycache__/
 .venv/
+
+# Private deployment settings
+*.env

@@ -1,0 +1,8 @@
+# Local SDK and temporary migration tooling
+.tooling/
+
+# Android local/generated files
+.gradle/
+build/
+app/build/
+local.properties
